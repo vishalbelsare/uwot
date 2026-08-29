@@ -21,6 +21,37 @@
 
 #include "RcppAnnoy.h"
 
+#if ANNOY_VERSION >= Annoy_Version(1, 17, 3)
+
+typedef Annoy::AnnoyIndexSingleThreadedBuildPolicy
+    AnnoyIndexThreadedBuildPolicy;
+
+struct UwotAnnoyEuclidean {
+  using Distance = Annoy::Euclidean;
+  using S = int32_t;
+  using T = float;
+};
+
+struct UwotAnnoyCosine {
+  using Distance = Annoy::Angular;
+  using S = int32_t;
+  using T = float;
+};
+
+struct UwotAnnoyManhattan {
+  using Distance = Annoy::Manhattan;
+  using S = int32_t;
+  using T = float;
+};
+
+struct UwotAnnoyHamming {
+  using Distance = Annoy::Hamming;
+  using S = int32_t;
+  using T = uint64_t;
+};
+
+#else
+
 typedef AnnoyIndexSingleThreadedBuildPolicy AnnoyIndexThreadedBuildPolicy;
 
 struct UwotAnnoyEuclidean {
@@ -47,6 +78,8 @@ struct UwotAnnoyHamming {
   using T = uint64_t;
 };
 
+#endif // of 'if ANNOY_VERSION >= Annoy_Version(1,17,3)'
+
 template <typename UwotAnnoyDistance> struct NNWorker {
   const std::string &index_name;
   const std::vector<double> &mat;
@@ -57,10 +90,18 @@ template <typename UwotAnnoyDistance> struct NNWorker {
   std::vector<int> idx;
   std::vector<typename UwotAnnoyDistance::T> dists;
 
+#if ANNOY_VERSION >= Annoy_Version(1, 17, 3)
+  Annoy::AnnoyIndex<typename UwotAnnoyDistance::S,
+                    typename UwotAnnoyDistance::T,
+                    typename UwotAnnoyDistance::Distance, Kiss64Random,
+                    AnnoyIndexThreadedBuildPolicy>
+      index;
+#else
   AnnoyIndex<typename UwotAnnoyDistance::S, typename UwotAnnoyDistance::T,
              typename UwotAnnoyDistance::Distance, Kiss64Random,
              AnnoyIndexThreadedBuildPolicy>
       index;
+#endif
 
   NNWorker(const std::string &index_name, const std::vector<double> &mat,
            std::size_t ncol, std::size_t n_neighbors, std::size_t search_k)

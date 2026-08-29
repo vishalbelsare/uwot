@@ -3,3 +3,7 @@
 .RData
 uwot.Rproj
 **/*DONTCHECKMEIN*
+docs
+inst/doc
+
+/.quarto/

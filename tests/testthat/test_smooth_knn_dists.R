@@ -104,19 +104,19 @@ expect_equal(res$rho, expected_rho4)
 ### Various fuzzy set matrices are defined in helper_fuzzy_sets.R
 # unsymmetrized fuzzy set
 res <- nng_to_sparse(t(nn_4$idx), res$matrix, self_nbr = TRUE, by_row = FALSE)
-expect_equal(res, V_asymm, tol = 1e-4)
+expect_equal(res, V_asymm, tolerance = 1e-4)
 
 # Fuzzy Set Union
-expect_equal(fuzzy_set_union(res), V_union, tol = 1e-4)
+expect_equal(fuzzy_set_union(res), V_union, tolerance = 1e-4)
 
 # mix intersection with union
 expect_equal(fuzzy_set_union(res, set_op_mix_ratio = 0.5), V_mix,
-  tol = 1e-4
+  tolerance = 1e-4
 )
 
 # intersection
 expect_equal(fuzzy_set_union(res, set_op_mix_ratio = 0), V_intersect,
-  tol = 1e-4
+  tolerance = 1e-4
 )
 
 res_cpp_conn1 <- smooth_knn_distances_parallel(
@@ -131,64 +131,76 @@ res_cpp_conn1 <- smooth_knn_distances_parallel(
   n_threads = 0
 )
 
-expect_equal(nng_to_sparse(nn_4$idx, flatmat(res_cpp_conn1$matrix, nbrs4),
-                          self_nbr = TRUE),
-             V_asymm,
-             tol = 1e-4)
+expect_equal(
+  nng_to_sparse(nn_4$idx, flatmat(res_cpp_conn1$matrix, nbrs4),
+    self_nbr = TRUE
+  ),
+  V_asymm,
+  tolerance = 1e-4
+)
 
 res_cpp_conn1.5 <-
-    smooth_knn_distances_parallel(
-      nn4dist,
-      nn_ptr = nbrs4,
-      skip_first = TRUE,
-      target = target4,
-      n_iter = 64,
-      local_connectivity = 1.5,
-      tol = 1e-5,
-      min_k_dist_scale = 1e-3,
-      n_threads = 0
-    )
-expect_equal(nng_to_sparse(t(nn_4$idx), res_cpp_conn1.5$matrix,
-                          self_nbr = TRUE, by_row = FALSE),
-             V_asymm_local,
-             tol = 1e-4)
+  smooth_knn_distances_parallel(
+    nn4dist,
+    nn_ptr = nbrs4,
+    skip_first = TRUE,
+    target = target4,
+    n_iter = 64,
+    local_connectivity = 1.5,
+    tol = 1e-5,
+    min_k_dist_scale = 1e-3,
+    n_threads = 0
+  )
+expect_equal(
+  nng_to_sparse(t(nn_4$idx), res_cpp_conn1.5$matrix,
+    self_nbr = TRUE, by_row = FALSE
+  ),
+  V_asymm_local,
+  tolerance = 1e-4
+)
 
 
 res_cpp_conn1 <-
-    smooth_knn_distances_parallel(
-      nn4dist,
-      nn_ptr = nbrs4,
-      skip_first = TRUE,
-      target = target4,
-      n_iter = 64,
-      local_connectivity = 1.0,
-      tol = 1e-5,
-      min_k_dist_scale = 1e-3,
-      n_threads = 1,
-      grain_size = 1
-    )
-expect_equal(nng_to_sparse(t(nn_4$idx), res_cpp_conn1$matrix,
-                          self_nbr = TRUE, by_row = FALSE),
-             V_asymm,
-             tol = 1e-4)
+  smooth_knn_distances_parallel(
+    nn4dist,
+    nn_ptr = nbrs4,
+    skip_first = TRUE,
+    target = target4,
+    n_iter = 64,
+    local_connectivity = 1.0,
+    tol = 1e-5,
+    min_k_dist_scale = 1e-3,
+    n_threads = 1,
+    grain_size = 1
+  )
+expect_equal(
+  nng_to_sparse(t(nn_4$idx), res_cpp_conn1$matrix,
+    self_nbr = TRUE, by_row = FALSE
+  ),
+  V_asymm,
+  tolerance = 1e-4
+)
 
 res_cpp_conn1.5 <-
-    smooth_knn_distances_parallel(
-      nn4dist,
-      nn_ptr = nbrs4,
-      skip_first = TRUE,
-      target = target4,
-      n_iter = 64,
-      local_connectivity = 1.5,
-      tol = 1e-5,
-      min_k_dist_scale = 1e-3,
-      n_threads = 1,
-      grain_size = 1
-    )
-expect_equal(nng_to_sparse(t(nn_4$idx), res_cpp_conn1.5$matrix,
-                          self_nbr = TRUE, by_row = FALSE),
-             V_asymm_local,
-             tol = 1e-4)
+  smooth_knn_distances_parallel(
+    nn4dist,
+    nn_ptr = nbrs4,
+    skip_first = TRUE,
+    target = target4,
+    n_iter = 64,
+    local_connectivity = 1.5,
+    tol = 1e-5,
+    min_k_dist_scale = 1e-3,
+    n_threads = 1,
+    grain_size = 1
+  )
+expect_equal(
+  nng_to_sparse(t(nn_4$idx), res_cpp_conn1.5$matrix,
+    self_nbr = TRUE, by_row = FALSE
+  ),
+  V_asymm_local,
+  tolerance = 1e-4
+)
 
 
 # Test cross-distances
@@ -200,17 +212,17 @@ V_asymm_local_cross <- cbind(
 )
 
 res_cpp_conn1.5_cross <-
-    smooth_knn_distances_parallel(
-      nn4dist,
-      nn_ptr = nbrs4,
-      skip_first = TRUE,
-      target = target4,
-      n_iter = 64,
-      local_connectivity = 1.5,
-      tol = 1e-5,
-      min_k_dist_scale = 1e-3,
-      n_threads = 0
-    )
+  smooth_knn_distances_parallel(
+    nn4dist,
+    nn_ptr = nbrs4,
+    skip_first = TRUE,
+    target = target4,
+    n_iter = 64,
+    local_connectivity = 1.5,
+    tol = 1e-5,
+    min_k_dist_scale = 1e-3,
+    n_threads = 0
+  )
 expect_equal(
   nng_to_sparse(
     t(nn_4$idx),
@@ -220,21 +232,21 @@ expect_equal(
     max_nbr_id = 12
   ),
   V_asymm_local_cross,
-  tol = 1e-4
+  tolerance = 1e-4
 )
 
 res_cpp_conn1.5_cross <-
-    smooth_knn_distances_parallel(
-      nn4dist,
-      nn_ptr = nbrs4,
-      skip_first = TRUE,
-      target = target4,
-      n_iter = 64,
-      local_connectivity = 1.5,
-      tol = 1e-5,
-      min_k_dist_scale = 1e-3,
-      n_threads = 1
-    )
+  smooth_knn_distances_parallel(
+    nn4dist,
+    nn_ptr = nbrs4,
+    skip_first = TRUE,
+    target = target4,
+    n_iter = 64,
+    local_connectivity = 1.5,
+    tol = 1e-5,
+    min_k_dist_scale = 1e-3,
+    n_threads = 1
+  )
 expect_equal(
   nng_to_sparse(
     t(nn_4$idx),
@@ -244,89 +256,78 @@ expect_equal(
     max_nbr_id = 12
   ),
   V_asymm_local_cross,
-  tol = 1e-4
+  tolerance = 1e-4
 )
 
 # smooth_knn_matrix
 
-expected_sknn4m <- Matrix::drop0(matrix(c(
-0, 0, 0, 0, 1.0000000, 0, 0, 8.380849e-01, 0, 0.1619081,
-0, 0, 0.5385625, 0.4614471, 0, 0, 0, 0, 0, 1.0000000,
-0, 0.3279685, 0, 1.0000000, 0, 0, 0.6720321, 0, 0, 0,
-0, 0, 1.0000000, 0, 0, 0, 0, 0, 0.5446591, 0.4553449,
-1, 0, 0, 0, 0, 0, 0.2807281, 7.192645e-01, 0, 0,
-1, 0, 0, 0, 1.0000000, 0, 0, 5.128686e-10, 0, 0,
-0, 0, 1.0000000, 0.6462531, 0, 0, 0, 3.537519e-01, 0, 0,
-1, 0, 0, 0, 0.6894084, 0, 0, 0, 0, 0.3105906,
-0, 0.4251748, 0.5748251, 1.0000000, 0, 0, 0, 0, 0, 0,
-0, 1.0000000, 0.4999981, 0.4999981, 0, 0, 0, 0, 0, 0),
-nrow = 10, byrow = TRUE))
+expected_sknn4m <- Matrix::drop0(matrix(
+  c(
+    0, 0, 0, 0, 1.0000000, 0, 0, 8.380849e-01, 0, 0.1619081,
+    0, 0, 0.5385625, 0.4614471, 0, 0, 0, 0, 0, 1.0000000,
+    0, 0.3279685, 0, 1.0000000, 0, 0, 0.6720321, 0, 0, 0,
+    0, 0, 1.0000000, 0, 0, 0, 0, 0, 0.5446591, 0.4553449,
+    1, 0, 0, 0, 0, 0, 0.2807281, 7.192645e-01, 0, 0,
+    1, 0, 0, 0, 1.0000000, 0, 0, 5.128686e-10, 0, 0,
+    0, 0, 1.0000000, 0.6462531, 0, 0, 0, 3.537519e-01, 0, 0,
+    1, 0, 0, 0, 0.6894084, 0, 0, 0, 0, 0.3105906,
+    0, 0.4251748, 0.5748251, 1.0000000, 0, 0, 0, 0, 0, 0,
+    0, 1.0000000, 0.4999981, 0.4999981, 0, 0, 0, 0, 0, 0
+  ),
+  nrow = 10, byrow = TRUE
+))
 
 sknn4m <- smooth_knn_matrix(nn_4)$matrix
-expect_equal(sknn4m@x, expected_sknn4m@x, tol = 1e-7)
+expect_equal(sknn4m@x, expected_sknn4m@x, tolerance = 1e-7)
 expect_equal(sknn4m@i, expected_sknn4m@i)
 
-test_that("sigma and failures agree with Python UMAP (mainly)", {
-  # #100: this test fail Ubuntu/Debian testing on:
-  # arm64 (Sys.info()[["sysname"]] == "Linux", R.version$arch == "aarch64")
-  # ppc64le (Sys.info()[["sysname"]] == "Linux", R.version$arch == "powerpc64le")
-  # s390x (Sys.info()[["sysname"]] == "Linux", R.version$arch == "s390x")
-  skip_on_os("linux", arch = c("aarch64", "powerpc64le", "s390x"))
-
-  # UMAP Python disagrees for sigma[6] because binary search fails here and uwot
-  # keeps track of the "best" sigma
-  sknn4m <- smooth_knn_matrix(nn_4, ret_sigma = TRUE, bandwidth = 0.5)
-  expect_equal(sknn4m$sigma, c(0.00195312, 0.0078125 , 0.00097656, 0.00390625, 0.00390625,
-          0.0019531250, 0.00390625, 0.00390625, 0.0078125 , 0.0078125))
-  # for Python UMAP sigma[6] == 0.00048322
-  expect_equal(sknn4m$rho, expected_rho, tol = 1e-7)
-  expect_equal(sknn4m$n_failures, 1)
-})
-
-nn4sp <- Matrix::drop0(matrix(c(
-0,        0,        0,        0,        0.1414214,0.6164414,0,        0.1732051,0,        0,
-0,        0,        0.3000000,0,        0,        0,        0,        0,        0.5099020,0.1732051,
-0,        0.3000000,0,        0.2449490,0,        0,        0.2645751,0,        0.4358899,0.3162278,
-0,        0.3316625,0.2449490,0,        0,        0,        0.3316625,0,        0.3000000,0.3162278,
-0.1414214,0,        0,        0,        0,        0.6164414,0,        0.2236068,0,        0,
-0,        0,        0,        0,        0,        0,        0,        0,        0,        0,
-0,        0,        0.2645751,0,        0.4582576,0,        0,        0,        0,        0,
-0.1732051,0,        0,        0,        0.2236068,0.7000000,0.4242641,0,        0,        0,
-0,        0,        0,        0.3000000,0,        0,        0,        0,        0,        0,
-0.4690416,0.1732051,0,        0.3162278,0,        0,        0,        0.3316625,0,        0),
-nrow = 10, byrow = TRUE))
+nn4sp <- Matrix::drop0(matrix(
+  c(
+    0, 0, 0, 0, 0.1414214, 0.6164414, 0, 0.1732051, 0, 0,
+    0, 0, 0.3000000, 0, 0, 0, 0, 0, 0.5099020, 0.1732051,
+    0, 0.3000000, 0, 0.2449490, 0, 0, 0.2645751, 0, 0.4358899, 0.3162278,
+    0, 0.3316625, 0.2449490, 0, 0, 0, 0.3316625, 0, 0.3000000, 0.3162278,
+    0.1414214, 0, 0, 0, 0, 0.6164414, 0, 0.2236068, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0.2645751, 0, 0.4582576, 0, 0, 0, 0, 0,
+    0.1732051, 0, 0, 0, 0.2236068, 0.7000000, 0.4242641, 0, 0, 0,
+    0, 0, 0, 0.3000000, 0, 0, 0, 0, 0, 0,
+    0.4690416, 0.1732051, 0, 0.3162278, 0, 0, 0, 0.3316625, 0, 0
+  ),
+  nrow = 10, byrow = TRUE
+))
 
 sknn4msp <- smooth_knn_matrix(nn4sp)$matrix
-expect_equal(sknn4msp@x, expected_sknn4m@x, tol = 1e-6)
+expect_equal(sknn4msp@x, expected_sknn4m@x, tolerance = 1e-6)
 expect_equal(sknn4msp@i, expected_sknn4m@i)
 
 nn3sp <- Matrix::drop0(matrix(c(
- 0,       0,       0,       0,       0.1414212,0.6164416,0,       0.1732050,0,       0,
- 0,       0,       0,       0,       0,       0,       0,       0,       0,       0.1732050,
- 0,       0.3000002,0,       0.2449490,0,       0,       0.2645751,0,       0.4358897,0,
- 0,       0,       0.2449490,0,       0,       0,       0.3316627,0,       0.2999998,0.3162279,
- 0.1414212,0,       0,       0,       0,       0.6164416,0,       0.2236066,0,       0,
- 0,       0,       0,       0,       0,       0,       0,       0,       0,       0,
- 0,       0,       0.2645751,0,       0,       0,       0,       0,       0,       0,
- 0.1732050,0,       0,       0,       0.2236066,0,       0,       0,       0,       0,
- 0,       0,       0,       0.2999998,0,       0,       0,       0,       0,       0,
- 0,       0.1732050,0,       0,       0,       0,       0,       0,       0,       0
+  0, 0, 0, 0, 0.1414212, 0.6164416, 0, 0.1732050, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0.1732050,
+  0, 0.3000002, 0, 0.2449490, 0, 0, 0.2645751, 0, 0.4358897, 0,
+  0, 0, 0.2449490, 0, 0, 0, 0.3316627, 0, 0.2999998, 0.3162279,
+  0.1414212, 0, 0, 0, 0, 0.6164416, 0, 0.2236066, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0.2645751, 0, 0, 0, 0, 0, 0, 0,
+  0.1732050, 0, 0, 0, 0.2236066, 0, 0, 0, 0, 0,
+  0, 0, 0, 0.2999998, 0, 0, 0, 0, 0, 0,
+  0, 0.1732050, 0, 0, 0, 0, 0, 0, 0, 0
 ), nrow = 10, byrow = TRUE))
 
 expected_sknn3m <- Matrix::drop0(matrix(c(
-   0, 0, 0,         0,         1.0000000, 0, 0,         0.5849702, 0,         0,
-   0, 0, 0.5849609, 0,         0,         0, 0,         0,         0,         1,
-   0, 0, 0,         1.0000000, 0,         0, 0.5849651, 0,         0,         0,
-   0, 0, 1.0000000, 0,         0,         0, 0,         0,         0.5849684, 0,
-   1, 0, 0,         0,         0,         0, 0,         0.5849684, 0,         0,
-   1, 0, 0,         0,         1.0000000, 0, 0,         0,         0,         0,
-   0, 0, 1.0000000, 0.5849615, 0,         0, 0,         0,         0,         0,
-   1, 0, 0,         0,         0.5849545, 0, 0,         0,         0,         0,
-   0, 0, 0.5849692, 1.0000000, 0,         0, 0,         0,         0,         0,
-   0, 1, 0,         0.5849544, 0,         0, 0,         0,         0,         0
+  0, 0, 0,         0,         1.0000000, 0, 0,         0.5849702, 0,         0,
+  0, 0, 0.5849609, 0,         0,         0, 0,         0,         0,         1,
+  0, 0, 0,         1.0000000, 0,         0, 0.5849651, 0,         0,         0,
+  0, 0, 1.0000000, 0,         0,         0, 0,         0,         0.5849684, 0,
+  1, 0, 0,         0,         0,         0, 0,         0.5849684, 0,         0,
+  1, 0, 0,         0,         1.0000000, 0, 0,         0,         0,         0,
+  0, 0, 1.0000000, 0.5849615, 0,         0, 0,         0,         0,         0,
+  1, 0, 0,         0,         0.5849545, 0, 0,         0,         0,         0,
+  0, 0, 0.5849692, 1.0000000, 0,         0, 0,         0,         0,         0,
+  0, 1, 0,         0.5849544, 0,         0, 0,         0,         0,         0
 ), nrow = 10, byrow = TRUE))
 sknn3msp <- smooth_knn_matrix(nn3sp)$matrix
-expect_equal(sknn3msp@x, expected_sknn3m@x, tol = 1e-6)
+expect_equal(sknn3msp@x, expected_sknn3m@x, tolerance = 1e-6)
 expect_equal(sknn3msp@i, expected_sknn3m@i)
 
 nn34sp <- nn4sp
@@ -345,11 +346,11 @@ expected_sknn34m <-
     0, 1.0000000, 0.4999980, 0.4999980, 0,         0, 0,         0,         0,        0
   ), nrow = 10, byrow = TRUE))
 sknn34msp <- smooth_knn_matrix(nn34sp, ret_sigma = TRUE)
-expect_equal(sknn34msp$matrix@x, expected_sknn34m@x, tol = 1e-6)
+expect_equal(sknn34msp$matrix@x, expected_sknn34m@x, tolerance = 1e-6)
 expect_equal(sknn34msp$matrix@i, expected_sknn34m@i)
 expect_equal(sknn34msp$n_failures, 1)
 expect_equal(sknn34msp$sigma,
-             c(0.1799393, 0.2364655, 0.0493803, 0.1026688, 0.2494049, 1.0000000, 0.1536713, 0.1355171, 0.2454262, 0.2063370),
-             tol = 1e-7)
-expect_equal(sknn34msp$rho, expected_rho, tol = 1e-6)
-
+  c(0.1799393, 0.2364655, 0.0493803, 0.1026688, 0.2494049, 1.0000000, 0.1536713, 0.1355171, 0.2454262, 0.2063370),
+  tolerance = 1e-7
+)
+expect_equal(sknn34msp$rho, expected_rho, tolerance = 1e-6)

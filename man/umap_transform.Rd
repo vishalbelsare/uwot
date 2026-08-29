@@ -21,7 +21,8 @@ umap_transform(
   learning_rate = NULL,
   opt_args = NULL,
   epoch_callback = NULL,
-  ret_extra = NULL
+  ret_extra = NULL,
+  seed = NULL
 )
 }
 \arguments{
@@ -187,7 +188,28 @@ any combination of the following strings:
     non-zero elements in the matrix is dependent on \code{n_epochs}. If you
     are only interested in the fuzzy input graph (e.g. for clustering),
     setting \code{n_epochs = 0} will avoid any further sparsifying.
+ \item \code{"nn"} the nearest neighbor graph for \code{X} with respect to
+   the observations in the \code{model}. The graph will be returned as a
+   list of two items: \code{idx} a matrix of indices, with as many rows
+   as there are items in \code{X} and as many columns as there are nearest
+   neighbors to be computed (this value is determined by the \code{model}).
+   The indices are those of the rows of the data used to build the
+   \code{model}, so they're not necessarily of much use unless you have
+   access to that data. The second item, \code{dist} is a matrix of the
+   equivalent distances, with the same dimensions as \code{idx}.
 }}
+
+\item{seed}{Integer seed to use to initialize the random number generator
+state. Combined with \code{n_sgd_threads = 1} or \code{batch = TRUE}, this
+should give consistent output across multiple runs on a given installation.
+Setting this value is equivalent to calling \code{\link[base]{set.seed}},
+but it may be more convenient in some situations than having to call a
+separate function. The default is to not set a seed, in which case this
+function uses the behavior specified by the supplied \code{model}: If the
+model specifies a seed, then the model seed will be used to seed then
+random number generator, and results will still be consistent (if
+\code{n_sgd_threads = 1}). If you want to force the seed to not be set,
+even if it is set in \code{model}, set \code{seed = FALSE}.}
 }
 \value{
 A matrix of coordinates for \code{X} transformed into the space

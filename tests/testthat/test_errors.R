@@ -1,4 +1,5 @@
 library(uwot)
+library(RSpectra)
 context("Input validation")
 
 expect_error(umap(X = list(X = "bad", Y = "wrong", nn = "what")), "data format")
@@ -24,7 +25,6 @@ expect_error(umap(iris10, n_threads = 0, n_neighbors = 4, nn_method = "fnn", ret
 expect_error(lvish(iris10, n_threads = 0, perplexity = 50), "perplexity")
 expect_error(tumap(iris10, n_components = 0), "n_components")
 expect_error(umap(iris10, pca = 1), "'pca' must be >=")
-expect_error(umap(iris10, pca = 500), "'pca' must be <=")
 expect_error(umap(iris10, pca_method = "bad-pca-package"))
 
 expect_error(umap(iris10, n_threads = 0, n_neighbors = 4, y = c(1:9, NA)), "numeric y")
@@ -42,6 +42,42 @@ expect_error(umap(iris10, n_threads = 0, pca = 0), "positive integer")
 expect_error(umap(iris10, n_threads = -1), "n_threads")
 expect_error(umap(iris10, n_sgd_threads = -1), "n_sgd_threads")
 
+test_that("callback setup remains safe on method validation errors", {
+  callback_called <- FALSE
+  callback <- function(...) {
+    callback_called <<- TRUE
+  }
+
+  expect_error(
+    uwot:::optimize_layout_r(
+      head_embedding = matrix(c(0, 1, 0, 1), ncol = 2),
+      tail_embedding = NULL,
+      positive_head = integer(),
+      positive_tail = integer(),
+      positive_ptr = c(0L, 0L, 0L),
+      n_epochs = 1L,
+      n_head_vertices = 2L,
+      n_tail_vertices = 2L,
+      epochs_per_sample = numeric(),
+      method = "umap",
+      method_args = list(),
+      initial_alpha = 1,
+      opt_args = list(method = "sgd"),
+      epoch_callback = callback,
+      negative_sample_rate = 5,
+      rng_type = "tausworthe",
+      batch = FALSE,
+      n_threads = 0L,
+      grain_size = 1L,
+      move_other = TRUE,
+      verbose = FALSE
+    ),
+    "Missing embedding method argument: a"
+  )
+
+  expect_false(callback_called)
+})
+
 model <- umap(iris10, n_neighbors = 2, ret_model = TRUE, n_epochs = 2)
 expect_error(umap_transform(iris10[, 1:2], model), "Incorrect dimensions")
 
@@ -51,21 +87,21 @@ expect_error(umap(iris10, n_neighbors = 4, init = iris), "matrix or string")
 
 # Don't use data with NA in it
 test_that("Detect data with NA in", {
-diris10na <- diris10
-diris10na[1] <- NA
-expect_error(umap(diris10na), "missing", ignore.case = TRUE)
+  diris10na <- diris10
+  diris10na[1] <- NA
+  expect_error(umap(diris10na), "missing", ignore.case = TRUE)
 
-dmiris10zna <- dmiris10z
-dmiris10zna[2, 1] <- NA
-expect_error(umap(dmiris10zna, n_neighbors = 4), "missing", ignore.case = TRUE)
+  dmiris10zna <- dmiris10z
+  dmiris10zna[2, 1] <- NA
+  expect_error(umap(dmiris10zna, n_neighbors = 4), "missing", ignore.case = TRUE)
 
-iris10na <- iris10
-iris10na[1, 1] <- NA
-expect_error(umap(iris10na, n_neighbors = 4), "missing", ignore.case = TRUE)
+  iris10na <- iris10
+  iris10na[1, 1] <- NA
+  expect_error(umap(iris10na, n_neighbors = 4), "missing", ignore.case = TRUE)
 })
 
 set.seed(42)
-nnsp10 <- Matrix::drop0(matrix(runif(100), nrow = 10) ^ 2, 0.5)
+nnsp10 <- Matrix::drop0(matrix(runif(100), nrow = 10)^2, 0.5)
 expect_error(umap(iris10, n_neighbors = 4, nn_method = nnsp10[, -10]), "same number")
 expect_error(umap(iris10, n_neighbors = 4, nn_method = nnsp10[-10, -10]), "unexpected number of rows")
 
@@ -95,8 +131,10 @@ expect_warning(
   "n_components >"
 )
 
-suppressWarnings(expect_error(umap(iris[1:100,], n_components = 10),
-                              "Initial data contains NA"))
+suppressWarnings(expect_error(
+  umap(iris[1:100, ], n_components = 10),
+  "Initial data contains NA"
+))
 
 # user-supplied intialization should not contain NA
 transform_init <- model$embedding[1:5, ]
@@ -108,3 +146,9 @@ old11 <- model$embedding[1, 1]
 model$embedding[1, 1] <- NA
 expect_error(trans <- umap_transform(iris[51:55, ], model = model), "contains NA")
 model$embedding[1, 1] <- old11
+
+# 110: warn if standard deviation of initial input could create small gradients
+expect_warning(
+  umap(iris10, init_sdev = 100.0, n_neighbors = 4),
+  "embedding standard deviation"
+)

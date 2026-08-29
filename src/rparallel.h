@@ -20,7 +20,7 @@
 #ifndef UWOT_RPARALLEL_H
 #define UWOT_RPARALLEL_H
 
-#include "RcppPerpendicular.h"
+#include "pforr.h"
 
 struct RParallel {
   std::size_t n_threads;
@@ -30,23 +30,12 @@ struct RParallel {
       : n_threads(n_threads), grain_size(grain_size) {}
 
   template <typename Worker> void pfor(std::size_t n_items, Worker &worker) {
-    RcppPerpendicular::pfor(n_items, worker, n_threads, grain_size);
+    pforr::parallel_for_indexed(n_items, worker, n_threads, grain_size);
   }
 
   template <typename Worker>
   void pfor(std::size_t begin, std::size_t end, Worker &worker) {
-    RcppPerpendicular::pfor(begin, end, worker, n_threads, grain_size);
-  }
-};
-
-struct RSerial {
-  template <typename Worker> void pfor(std::size_t n_items, Worker &worker) {
-    pfor(0, n_items, worker);
-  }
-
-  template <typename Worker>
-  void pfor(std::size_t begin, std::size_t end, Worker &worker) {
-    worker(begin, end, 0);
+    pforr::parallel_for_indexed(begin, end, worker, n_threads, grain_size);
   }
 };
 

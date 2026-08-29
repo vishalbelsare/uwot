@@ -17,6 +17,7 @@
 //  You should have received a copy of the GNU General Public License
 //  along with UWOT.  If not, see <http://www.gnu.org/licenses/>.
 
+#include <memory>
 #include <vector>
 
 #include "uwot/coords.h"
@@ -45,15 +46,17 @@ auto lget(List list, const std::string &name, T default_value) -> T {
 template <bool DoBatch = true> struct BatchRngFactory {
   using PcgFactoryType = batch_pcg_factory;
   using TauFactoryType = batch_tau_factory;
+  using DeterministicFactoryType = deterministic_factory;
 };
 template <> struct BatchRngFactory<false> {
   using PcgFactoryType = pcg_factory;
   using TauFactoryType = tau_factory;
+  using DeterministicFactoryType = deterministic_factory;
 };
 
 struct UmapFactory {
   bool move_other;
-  bool pcg_rand;
+  const std::string &rng_type;
   std::vector<float> &head_embedding;
   std::vector<float> &tail_embedding;
   const std::vector<unsigned int> &positive_head;
@@ -69,10 +72,10 @@ struct UmapFactory {
   bool batch;
   std::size_t n_threads;
   std::size_t grain_size;
-  uwot::EpochCallback *epoch_callback;
+  std::unique_ptr<uwot::EpochCallback> epoch_callback;
   bool verbose;
 
-  UmapFactory(bool move_other, bool pcg_rand,
+  UmapFactory(bool move_other, const std::string &rng_type,
               std::vector<float> &head_embedding,
               std::vector<float> &tail_embedding,
               const std::vector<unsigned int> &positive_head,
@@ -83,8 +86,8 @@ struct UmapFactory {
               const std::vector<float> &epochs_per_sample, float initial_alpha,
               List opt_args, float negative_sample_rate, bool batch,
               std::size_t n_threads, std::size_t grain_size,
-              uwot::EpochCallback *epoch_callback, bool verbose)
-      : move_other(move_other), pcg_rand(pcg_rand),
+              std::unique_ptr<uwot::EpochCallback> epoch_callback, bool verbose)
+      : move_other(move_other), rng_type(rng_type),
         head_embedding(head_embedding), tail_embedding(tail_embedding),
         positive_head(positive_head), positive_tail(positive_tail),
         positive_ptr(positive_ptr), n_epochs(n_epochs),
@@ -92,110 +95,100 @@ struct UmapFactory {
         epochs_per_sample(epochs_per_sample), initial_alpha(initial_alpha),
         opt_args(opt_args), negative_sample_rate(negative_sample_rate),
         batch(batch), n_threads(n_threads), grain_size(grain_size),
-        epoch_callback(epoch_callback), verbose(verbose) {}
+        epoch_callback(std::move(epoch_callback)), verbose(verbose) {}
 
   template <typename Gradient> void create(const Gradient &gradient) {
     if (move_other) {
-      create_impl<true>(gradient, pcg_rand, batch);
+      create_impl<true>(gradient, rng_type, batch);
     } else {
-      create_impl<false>(gradient, pcg_rand, batch);
+      create_impl<false>(gradient, rng_type, batch);
     }
   }
 
   template <bool DoMove, typename Gradient>
-  void create_impl(const Gradient &gradient, bool pcg_rand, bool batch) {
+  void create_impl(const Gradient &gradient, const std::string &rng_type,
+                   bool batch) {
     if (batch) {
-      create_impl<BatchRngFactory<true>, DoMove>(gradient, pcg_rand, batch);
+      create_impl<BatchRngFactory<true>, DoMove>(gradient, rng_type, batch);
     } else {
-      create_impl<BatchRngFactory<false>, DoMove>(gradient, pcg_rand, batch);
+      create_impl<BatchRngFactory<false>, DoMove>(gradient, rng_type, batch);
     }
   }
 
   template <typename BatchRngFactory, bool DoMove, typename Gradient>
-  void create_impl(const Gradient &gradient, bool pcg_rand, bool batch) {
-    if (pcg_rand) {
+  void create_impl(const Gradient &gradient, const std::string &rng_type,
+                   bool batch) {
+    if (rng_type == "pcg") {
       create_impl<typename BatchRngFactory::PcgFactoryType, DoMove>(gradient,
                                                                     batch);
-    } else {
+    } else if (rng_type == "tausworthe") {
       create_impl<typename BatchRngFactory::TauFactoryType, DoMove>(gradient,
                                                                     batch);
+    } else if (rng_type == "deterministic") {
+      create_impl<typename BatchRngFactory::DeterministicFactoryType, DoMove>(
+          gradient, batch);
+    } else {
+      stop("Invalid rng type: ", rng_type);
     }
   }
 
-  auto create_adam(List opt_args) -> uwot::Adam {
-    float alpha = lget(opt_args, "alpha", 1.0);
-    float beta1 = lget(opt_args, "beta1", 0.9);
-    float beta2 = lget(opt_args, "beta2", 0.999);
-    float eps = lget(opt_args, "eps", 1e-7);
-    if (verbose) {
-      Rcerr << "Optimizing with Adam"
-            << " alpha = " << alpha << " beta1 = " << beta1
-            << " beta2 = " << beta2 << " eps = " << eps << std::endl;
+  std::unique_ptr<uwot::Optimizer> create_optimizer(List opt_args) {
+    std::string method = lget(opt_args, "method", "adam");
+    if (method == "adam") {
+      float alpha = lget(opt_args, "alpha", 1.0);
+      float beta1 = lget(opt_args, "beta1", 0.9);
+      float beta2 = lget(opt_args, "beta2", 0.999);
+      float eps = lget(opt_args, "eps", 1e-7);
+      if (verbose) {
+        Rcerr << "Optimizing with Adam" << " alpha = " << alpha
+              << " beta1 = " << beta1 << " beta2 = " << beta2
+              << " eps = " << eps << std::endl;
+      }
+      return std::make_unique<uwot::Adam>(alpha, beta1, beta2, eps,
+                                          head_embedding.size());
+    } else if (method == "sgd") {
+      float alpha = lget(opt_args, "alpha", 1.0);
+      if (verbose) {
+        Rcerr << "Optimizing with SGD" << " alpha = " << alpha << std::endl;
+      }
+      return std::make_unique<uwot::Sgd>(alpha);
+    } else {
+      stop("Unknown optimization method: " + method);
     }
-
-    return uwot::Adam(alpha, beta1, beta2, eps, head_embedding.size());
-  }
-
-  auto create_sgd(List opt_args) -> uwot::Sgd {
-    float alpha = lget(opt_args, "alpha", 1.0);
-    if (verbose) {
-      Rcerr << "Optimizing with SGD"
-            << " alpha = " << alpha << std::endl;
-    }
-
-    return uwot::Sgd(alpha);
   }
 
   template <typename RandFactory, bool DoMove, typename Gradient>
   void create_impl(const Gradient &gradient, bool batch) {
-    if (batch) {
-      std::string opt_name = opt_args["method"];
-      if (opt_name == "adam") {
-        auto opt = create_adam(opt_args);
-        create_impl_batch_opt<decltype(opt), RandFactory, DoMove, Gradient>(
-            gradient, opt, batch);
-      } else if (opt_name == "sgd") {
-        auto opt = create_sgd(opt_args);
-        create_impl_batch_opt<decltype(opt), RandFactory, DoMove, Gradient>(
-            gradient, opt, batch);
-      } else {
-        stop("Unknown optimization method");
-      }
-    } else {
-      const std::size_t ndim = head_embedding.size() / n_head_vertices;
-      uwot::Sampler sampler(epochs_per_sample, negative_sample_rate);
-      uwot::InPlaceUpdate<DoMove> update(head_embedding, tail_embedding,
-                                         initial_alpha, epoch_callback);
-      uwot::EdgeWorker<Gradient, decltype(update), RandFactory> worker(
-          gradient, update, positive_head, positive_tail, sampler, ndim,
-          n_tail_vertices, n_threads);
-      create_impl(worker, gradient);
-    }
-  }
-
-  template <typename Opt, typename RandFactory, bool DoMove, typename Gradient>
-  void create_impl_batch_opt(const Gradient &gradient, Opt &opt, bool batch) {
     uwot::Sampler sampler(epochs_per_sample, negative_sample_rate);
     const std::size_t ndim = head_embedding.size() / n_head_vertices;
-    uwot::BatchUpdate<DoMove, decltype(opt)> update(
-        head_embedding, tail_embedding, opt, epoch_callback);
-    uwot::NodeWorker<Gradient, decltype(update), RandFactory> worker(
-        gradient, update, positive_head, positive_tail, positive_ptr, sampler,
-        ndim, n_tail_vertices);
-    create_impl(worker, gradient);
+
+    if (batch) {
+      std::string opt_name = opt_args["method"];
+      auto opt = create_optimizer(opt_args);
+      uwot::BatchUpdate<DoMove> update(head_embedding, tail_embedding,
+                                       std::move(opt),
+                                       std::move(epoch_callback));
+      uwot::NodeWorker<Gradient, decltype(update), RandFactory> worker(
+          gradient, update, positive_head, positive_tail, positive_ptr,
+          std::move(sampler), ndim, n_tail_vertices);
+      create_impl(worker, gradient);
+    } else {
+      uwot::InPlaceUpdate<DoMove> update(head_embedding, tail_embedding,
+                                         initial_alpha,
+                                         std::move(epoch_callback));
+      uwot::EdgeWorker<Gradient, decltype(update), RandFactory> worker(
+          gradient, update, positive_head, positive_tail, std::move(sampler),
+          ndim, n_tail_vertices, n_threads);
+      create_impl(worker, gradient);
+    }
   }
 
   template <typename Worker, typename Gradient>
   void create_impl(Worker &worker, const Gradient &gradient) {
 
     RProgress progress(n_epochs, verbose);
-    if (n_threads > 0) {
-      RParallel parallel(n_threads, grain_size);
-      create_impl(worker, gradient, progress, parallel);
-    } else {
-      RSerial serial;
-      create_impl(worker, gradient, progress, serial);
-    }
+    RParallel parallel(n_threads, grain_size);
+    create_impl(worker, gradient, progress, parallel);
   }
 
   template <typename Worker, typename Gradient, typename Progress,
@@ -210,16 +203,16 @@ auto r_to_coords(NumericMatrix head_embedding,
                  Nullable<NumericMatrix> tail_embedding) -> uwot::Coords {
   auto head_vec = as<std::vector<float>>(head_embedding);
   if (tail_embedding.isNull()) {
-    return uwot::Coords(head_vec);
+    return uwot::Coords(std::move(head_vec));
   } else {
     auto tail_vec = as<std::vector<float>>(tail_embedding);
-    return uwot::Coords(head_vec, tail_vec);
+    return uwot::Coords(std::move(head_vec), std::move(tail_vec));
   }
 }
 
 auto r_to_coords(NumericMatrix head_embedding) -> uwot::Coords {
   auto head_vec = as<std::vector<float>>(head_embedding);
-  return uwot::Coords(head_vec);
+  return uwot::Coords(std::move(head_vec));
 }
 
 void validate_args(List method_args,
@@ -248,8 +241,12 @@ void create_umap(UmapFactory &umap_factory, List method_args) {
   }
 }
 
-void create_tumap(UmapFactory &umap_factory, List) {
-  const uwot::tumap_gradient gradient;
+void create_tumap(UmapFactory &umap_factory, List method_args) {
+  std::vector<std::string> arg_names = {"gamma"};
+  validate_args(method_args, arg_names);
+  float gamma = method_args["gamma"];
+
+  const uwot::tumap_gradient gradient(gamma);
   umap_factory.create(gradient);
 }
 
@@ -260,7 +257,7 @@ void create_umapai(UmapFactory &umap_factory, List method_args) {
   std::vector<float> ai = method_args["ai"];
   float b = method_args["b"];
   std::size_t ndim = method_args["ndim"];
-  const uwot::umapai_gradient gradient(ai, b, ndim);
+  const uwot::umapai_gradient gradient(std::move(ai), b, ndim);
   umap_factory.create(gradient);
 }
 
@@ -272,17 +269,7 @@ void create_umapai2(UmapFactory &umap_factory, List method_args) {
   std::vector<float> aj = method_args["aj"];
   float b = method_args["b"];
   std::size_t ndim = method_args["ndim"];
-  const uwot::umapai2_gradient gradient(ai, aj, b, ndim);
-  umap_factory.create(gradient);
-}
-
-void create_pacmap(UmapFactory &umap_factory, List method_args) {
-  std::vector<std::string> arg_names = {"a", "b"};
-  validate_args(method_args, arg_names);
-
-  float a = method_args["a"];
-  float b = method_args["b"];
-  const uwot::pacmap_gradient gradient(a, b);
+  const uwot::umapai2_gradient gradient(std::move(ai), std::move(aj), b, ndim);
   umap_factory.create(gradient);
 }
 
@@ -327,14 +314,16 @@ template <> struct REpochCallback<true> : uwot::EpochCallback {
 };
 
 auto create_callback(Nullable<Function> epoch_callback, std::size_t ndim,
-                     bool move_other) -> uwot::EpochCallback * {
+                     bool move_other) -> std::unique_ptr<uwot::EpochCallback> {
   if (epoch_callback.isNull()) {
-    return new uwot::DoNothingCallback();
+    return std::make_unique<uwot::DoNothingCallback>();
   } else {
     if (move_other) {
-      return new REpochCallback<true>(as<Function>(epoch_callback), ndim);
+      return std::make_unique<REpochCallback<true>>(
+          as<Function>(epoch_callback), ndim);
     } else {
-      return new REpochCallback<false>(as<Function>(epoch_callback), ndim);
+      return std::make_unique<REpochCallback<false>>(
+          as<Function>(epoch_callback), ndim);
     }
   }
 }
@@ -349,20 +338,20 @@ NumericMatrix optimize_layout_r(
     const std::vector<float> epochs_per_sample, const std::string &method,
     List method_args, float initial_alpha, List opt_args,
     Nullable<Function> epoch_callback, float negative_sample_rate,
-    bool pcg_rand = true, bool batch = false, std::size_t n_threads = 0,
-    std::size_t grain_size = 1, bool move_other = true, bool verbose = false) {
+    const std::string &rng_type = "tausworthe", bool batch = false,
+    std::size_t n_threads = 0, std::size_t grain_size = 1,
+    bool move_other = true, bool verbose = false) {
 
   auto coords = r_to_coords(head_embedding, tail_embedding);
   const std::size_t ndim = head_embedding.size() / n_head_vertices;
-  uwot::EpochCallback *uwot_ecb =
-      create_callback(epoch_callback, ndim, move_other);
+  auto uwot_ecb = create_callback(epoch_callback, ndim, move_other);
 
-  UmapFactory umap_factory(move_other, pcg_rand, coords.get_head_embedding(),
+  UmapFactory umap_factory(move_other, rng_type, coords.get_head_embedding(),
                            coords.get_tail_embedding(), positive_head,
                            positive_tail, positive_ptr, n_epochs,
                            n_head_vertices, n_tail_vertices, epochs_per_sample,
                            initial_alpha, opt_args, negative_sample_rate, batch,
-                           n_threads, grain_size, uwot_ecb, verbose);
+                           n_threads, grain_size, std::move(uwot_ecb), verbose);
   if (verbose) {
     Rcerr << "Using method '" << method << "'" << std::endl;
   }
@@ -372,8 +361,6 @@ NumericMatrix optimize_layout_r(
     create_tumap(umap_factory, method_args);
   } else if (method == "largevis") {
     create_largevis(umap_factory, method_args);
-  } else if (method == "pacmap") {
-    create_pacmap(umap_factory, method_args);
   } else if (method == "leopold") {
     create_umapai(umap_factory, method_args);
   } else if (method == "leopold2") {

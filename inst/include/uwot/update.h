@@ -27,6 +27,9 @@
 #ifndef UWOT_UPDATE_H
 #define UWOT_UPDATE_H
 
+#include <algorithm>
+#include <memory>
+
 #include "gradient.h"
 #include "optimize.h"
 #include "sampler.h"
@@ -39,7 +42,7 @@ struct EpochCallback {
   virtual void operator()(std::size_t epoch, std::size_t n_epochs,
                           const std::vector<float> &head_embedding,
                           const std::vector<float> &tail_embedding) = 0;
-  virtual ~EpochCallback() {}
+  virtual ~EpochCallback() = default;
 };
 
 struct DoNothingCallback : EpochCallback {
@@ -63,9 +66,10 @@ process_edge(Update &update, Gradient &gradient, Sampler &sampler, Prng &prng,
   update_attract(update, gradient, dj, dk, ndim, disp, thread_id);
 
   // Negative sampling step: assume any other point (dkn) is a -ve example
+  const std::size_t epoch = sampler.epoch;
   std::size_t n_neg_samples = sampler.get_num_neg_samples(edge);
   for (std::size_t p = 0; p < n_neg_samples; p++) {
-    const std::size_t dkn = prng(n_tail_vertices) * ndim;
+    const std::size_t dkn = prng(n_tail_vertices, edge, epoch) * ndim;
     if (dj == dkn) {
       continue;
     }
@@ -98,17 +102,13 @@ inline void update_repel(Update &update, const Gradient &gradient,
 }
 
 // Function to decide whether to move both vertices in an edge
-// Default empty version does nothing: used in umap_transform when
-// some of the vertices should be held fixed
+// The untaken branch is discarded at compile time.
 template <bool DoMoveVertex = false>
-inline void update_vec(std::vector<float> &, float, std::size_t, std::size_t) {}
-
-// Specialization to move vertex/update gradient: used in umap when both
-// vertices in an edge should be moved
-template <>
-inline void update_vec<true>(std::vector<float> &vec, float val, std::size_t i,
-                             std::size_t j) {
-  vec[i + j] += val;
+inline void update_vec(std::vector<float> &vec, float val, std::size_t i,
+                       std::size_t j) {
+  if constexpr (DoMoveVertex) {
+    vec[i + j] += val;
+  }
 }
 
 // If DoMoveTailVertex = true, graph is symmetric and head and tail point to the
@@ -118,16 +118,13 @@ inline void update_vec<true>(std::vector<float> &vec, float val, std::size_t i,
 template <bool DoMoveTailVertex = true>
 inline void update_head_grad_vec(std::vector<float> &vec, std::size_t i,
                                  float val) {
-  vec[i] += 2.0 * val;
-}
-
-// Specialization for DoMoveTailVertex = true. In this case the edges are not
-// symmetric and the tail embedding should be held fixed, so the head node only
-// get one lot of gradient updating
-template <>
-inline void update_head_grad_vec<false>(std::vector<float> &vec, std::size_t i,
-                                        float val) {
-  vec[i] += val;
+  if constexpr (DoMoveTailVertex) {
+    vec[i] += 2.0 * val;
+  } else {
+    // The tail embedding is fixed, so only the head vertex accumulates
+    // a single update.
+    vec[i] += val;
+  }
 }
 
 // DoMoveVertex: true if both ends of a positive edge should be updated
@@ -140,7 +137,7 @@ template <bool DoMoveVertex> struct InPlaceUpdate {
 
   InPlaceUpdate(std::vector<float> &head_embedding,
                 std::vector<float> &tail_embedding, float alpha,
-                EpochCallback *epoch_callback)
+                std::unique_ptr<EpochCallback> epoch_callback)
       : head_embedding(head_embedding), tail_embedding(tail_embedding),
         opt(alpha), epoch_callback(std::move(epoch_callback)) {}
 
@@ -179,25 +176,20 @@ template <bool DoMoveVertex> struct InPlaceUpdate {
 // different data. The tail coordinates are fixed in this case, so again they
 // do not move. Hence both so in both cases we only ever need to update the head
 // coordinates.
-template <bool DoMoveVertex, typename Opt> struct BatchUpdate {
+template <bool DoMoveVertex> struct BatchUpdate {
   std::vector<float> &head_embedding;
   std::vector<float> &tail_embedding;
-  Opt &opt;
+  std::unique_ptr<Optimizer> opt;
   std::vector<float> gradient;
   std::unique_ptr<EpochCallback> epoch_callback;
 
   BatchUpdate(std::vector<float> &head_embedding,
-              std::vector<float> &tail_embedding, Opt &opt,
-              EpochCallback *epoch_callback)
+              std::vector<float> &tail_embedding,
+              std::unique_ptr<Optimizer> opt,
+              std::unique_ptr<EpochCallback> epoch_callback)
       : head_embedding(head_embedding), tail_embedding(tail_embedding),
-        opt(opt), gradient(head_embedding.size()),
+        opt(std::move(opt)), gradient(head_embedding.size()),
         epoch_callback(std::move(epoch_callback)) {}
-
-  BatchUpdate(BatchUpdate &&other)
-      : head_embedding(other.head_embedding),
-        tail_embedding(other.tail_embedding), opt(other.opt),
-        gradient(other.head_embedding.size()),
-        epoch_callback(std::move(other.epoch_callback)) {}
 
   inline void attract(std::size_t dj, std::size_t dk, std::size_t d,
                       float grad_d, std::size_t) {
@@ -216,14 +208,11 @@ template <bool DoMoveVertex, typename Opt> struct BatchUpdate {
   template <typename Parallel>
   void epoch_end(std::size_t epoch, std::size_t n_epochs, Parallel &parallel) {
     auto worker = [&](std::size_t begin, std::size_t end, std::size_t) {
-      for (std::size_t i = begin; i < end; i++) {
-        // head_embedding[i] += opt.alpha * gradient[i];
-        opt.update(head_embedding, gradient, i);
-      }
+      opt->update(head_embedding, gradient, begin, end);
     };
     parallel.pfor(head_embedding.size(), worker);
 
-    opt.epoch_end(epoch, n_epochs);
+    opt->epoch_end(epoch, n_epochs);
     (*epoch_callback)(epoch, n_epochs, head_embedding, tail_embedding);
   }
 };

@@ -39,7 +39,7 @@ self_unn4 <- NULL
 create_data <- function() {
   iris10 <<- x2m(iris[1:10, ])
   iris10_Y <<- pca_init(iris10, ndim = 2)
-  diris10 <<- dist(iris10)
+  diris10 <<- stats::dist(iris10)
 
   # Sparse iris10 dist
   dmiris10 <<- as.matrix(diris10)
@@ -55,8 +55,9 @@ create_data <- function() {
   ynum2 <<- seq(from = 10, to = -10, length.out = 10) / 100
 
   nnl <- find_nn(iris10,
-                 k = 4, method = "fnn", metric = "euclidean",
-                 n_threads = 0, verbose = FALSE)
+    k = 4, method = "fnn", metric = "euclidean",
+    n_threads = 0, verbose = FALSE
+  )
   row.names(nnl$idx) <- row.names(iris10)
   row.names(nnl$dist) <- row.names(iris10)
   nn <<- nnl

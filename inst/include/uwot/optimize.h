@@ -27,35 +27,51 @@
 #ifndef UWOT_OPTIMIZE_H
 #define UWOT_OPTIMIZE_H
 
+#include <cmath>
+#include <cstddef>
 #include <vector>
 
 namespace uwot {
 
-float linear_decay(double val, std::size_t epoch, std::size_t n_epochs) {
+[[nodiscard]] inline float linear_decay(double val, std::size_t epoch,
+                                        std::size_t n_epochs) {
   return val *
          (1.0 - (static_cast<float>(epoch) / static_cast<float>(n_epochs)));
 }
 
-float linear_grow(double val, std::size_t epoch, std::size_t n_epochs) {
+[[nodiscard]] inline float linear_grow(double val, std::size_t epoch,
+                                       std::size_t n_epochs) {
   return val * (static_cast<float>(epoch) / static_cast<float>(n_epochs));
 }
 
-struct Sgd {
+struct Optimizer {
+  virtual ~Optimizer() = default;
+  virtual void update(std::vector<float> &v, std::vector<float> &grad,
+                      std::size_t begin, std::size_t end) = 0;
+  virtual void epoch_end(std::size_t epoch, std::size_t n_epochs) = 0;
+};
+
+struct Sgd : public Optimizer {
   float initial_alpha;
   float alpha;
 
   Sgd(float alpha) : initial_alpha(alpha), alpha(alpha){};
 
-  void update(std::vector<float> &v, std::vector<float> &grad, std::size_t i) {
-    v[i] += alpha * grad[i];
+  virtual ~Sgd() = default;
+
+  void update(std::vector<float> &v, std::vector<float> &grad,
+              std::size_t begin, std::size_t end) override {
+    for (std::size_t i = begin; i < end; i++) {
+      v[i] += alpha * grad[i];
+    }
   }
 
-  void epoch_end(std::size_t epoch, std::size_t n_epochs) {
+  void epoch_end(std::size_t epoch, std::size_t n_epochs) override {
     alpha = linear_decay(initial_alpha, epoch, n_epochs);
   }
 };
 
-struct Adam {
+struct Adam : public Optimizer {
   float initial_alpha;
   float alpha;
   float beta1;
@@ -82,26 +98,32 @@ struct Adam {
   Adam(float alpha, float beta1, float beta2, float eps, std::size_t vec_size)
       : initial_alpha(alpha), alpha(alpha), beta1(beta1), beta2(beta2),
         beta11(1.0 - beta1), beta1t(beta1), beta21(1.0 - beta2), beta2t(beta2),
-        eps(eps), epsc(eps * sqrt(beta21)),
-        ad_scale(alpha * sqrt(beta21) / beta11), mt(vec_size), vt(vec_size) {}
+        eps(eps), epsc(eps * std::sqrt(beta21)),
+        ad_scale(alpha * std::sqrt(beta21) / beta11), mt(vec_size),
+        vt(vec_size) {}
 
-  void update(std::vector<float> &v, std::vector<float> &grad, std::size_t i) {
-    // this takes advantage of updating in-place to give a more compact version
-    // of mt[i] = beta1 * mt[i] + beta11 * grad[i] etc.
-    vt[i] += beta21 * (grad[i] * grad[i] - vt[i]);
-    mt[i] += beta11 * (grad[i] - mt[i]);
+  virtual ~Adam() = default;
 
-    // ad_scale and epsc handle the debiasing
-    v[i] += ad_scale * mt[i] / (sqrt(vt[i]) + epsc);
+  void update(std::vector<float> &v, std::vector<float> &grad,
+              std::size_t begin, std::size_t end) override {
+    for (std::size_t i = begin; i < end; i++) {
+      // this takes advantage of updating in-place to give a more compact
+      // version of mt[i] = beta1 * mt[i] + beta11 * grad[i] etc.
+      vt[i] += beta21 * (grad[i] * grad[i] - vt[i]);
+      mt[i] += beta11 * (grad[i] - mt[i]);
+
+      // ad_scale and epsc handle the debiasing
+      v[i] += ad_scale * mt[i] / (std::sqrt(vt[i]) + epsc);
+    }
   }
 
-  void epoch_end(std::size_t epoch, std::size_t n_epochs) {
+  void epoch_end(std::size_t epoch, std::size_t n_epochs) override {
     alpha = linear_decay(initial_alpha, epoch, n_epochs);
 
     // update debiasing factors
     beta1t *= beta1;
     beta2t *= beta2;
-    float sqrt_b2t1 = sqrt(1.0 - beta2t);
+    float sqrt_b2t1 = std::sqrt(1.0 - beta2t);
 
     // rescale alpha and eps to take account of debiasing
     ad_scale = alpha * sqrt_b2t1 / (1.0 - beta1t);

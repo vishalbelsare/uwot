@@ -1,4 +1,159 @@
-# uwot 0.1.14.9000
+# uwot (development version)
+
+# uwot 0.2.5
+
+## Bug fixes and minor improvements
+
+* New parameter: `n_build_threads`. Controls the number of threads used to build the nearest
+neighbor index when using `nn_method = "hnsw"` or `nn_method = "nndescent"`. With a given seed,
+setting `n_build_threads = 1` will give deterministic nearest neighbor results when using either of
+those methods (at the cost of some speed). If you are using the default Annoy-based method, this
+parameter does nothing: it has always used one thread to build the index. Thank you
+[hsuknowledge](https://github.com/hsuknowledge) for pointing out the issue around determinism.
+(<https://github.com/jlmelville/uwot/issues/139>).
+* When passing a list of two matrices to `nn_method` to represent a pre-computed k-nearest neighbor
+graph, you may specify the indices and distances as `index` and `distance` respectively. This
+improves compatibility with the `BiocNeighbors` package. Thank you
+[hsuknowledge](https://github.com/hsuknowledge) for pointing out the mismatch in naming convention
+(<https://github.com/jlmelville/uwot/issues/140>).
+* Parallel-loop helpers now propagate worker exceptions from threaded code, although hopefully that
+never happens.
+* `default_num_threads` now returns an integer.
+* The C++ sources now explicitly target the C++17 standard.
+
+# uwot 0.2.4
+
+## Bug fixes and minor improvements
+ 
+* The installation status of optional dependencies were not being detected
+correctly. This meant that different packages could be used for initialization
+in unpredictable ways depending on whether they had been explicitly loaded or
+not. Thank you [hsuknowledge](https://github.com/hsuknowledge) for the report
+(<https://github.com/jlmelville/uwot/issues/134>).
+* Users of the [bbknnR](https://github.com/ycli1995/bbknnR/issues/3) package 
+were suffering from a not-helpful error message when the custom neighbor data
+contained missing values. An explicit check has been added and although this is
+still a fatal error, the message should be more informative
+(<https://github.com/jlmelville/uwot/issues/135>).
+* Fixed a partially-specified parameter name being passed to irlba. Thank you
+[Hugo Gruson](https://github.com/Bisaloo) for the fix 
+(<https://github.com/jlmelville/uwot/pull/136>).
+* Development-only: fixed an incorrect use of `testthat::expect` in a unit test.
+Thank you [Hadley Wickham](https://github.com/hadley) for the fix
+(<https://github.com/jlmelville/uwot/pull/138>).
+
+# uwot 0.2.3
+
+## New features:
+
+* New parameter: `rng_type`. This will be used in favor of the boolean 
+`pcg_rand` parameter, although `pcg_rand` will still work for backwards
+compatibility.
+* New negative sampling option: set `rng_type = "deterministic"` to use a
+deterministic sampling of vertices during the optimization phase. This should
+give qualitatively similar results to using a real PRNG, but has the advantage
+of being faster and giving more reproducible output. This feature was inspired
+by a comment by 
+[Leland McInnes on Reddit](https://www.reddit.com/r/MachineLearning/comments/1gsjfq9/comment/lxip9wy/).
+
+## Bug fixes and minor improvements
+
+* Setting `num_threads` directly in `umap2` did not result in the number of SGD
+threads being updated to that value when `batch = TRUE`, which it should have
+been.
+* Despite assertions to the contrary in version 0.2.1, `umap_transform`
+continued to return the fuzzy graph in transposed form. Thank you
+[PedroMilanezAlmeida](https://github.com/PedroMilanezAlmeida) for 
+reopening the issue (<https://github.com/jlmelville/uwot/issues/118>).
+* Relative paths could not be used to save a model. Thank you
+[Wouter van der Bijl](https://github.com/Ax3man) for the bug report
+(<https://github.com/jlmelville/uwot/issues/131>) and the suggested fix.
+* `repulsion_strength` was silently ignored if used with `tumap` or `umap2` with
+`a = 1, b = 1`. Ignoring the setting was on purpose, but it was not documented
+anywhere. `repulsion_strength` is now compatible with these settings.
+* It's no longer an error to provide a `pca` argument if the input data has a
+maximum rank smaller than the value of `pca`. No PCA is applied in this case.
+If `verbose = TRUE`, a message will be printed to inform the user.
+
+# uwot 0.2.2
+
+## Bug fixes and minor improvements
+
+* `RSpectra` is now a required dependency (again). It was a required dependency
+up until version 0.1.12, when it became optional (`irlba` was used in its
+place). However, problems with interactions of the current version of `irlba`
+with an ABI change in the `Matrix` package means that it's hard for downstream
+packages and users to build `uwot` without re-installing `Matrix` and `irlba`
+from source, which may not be an option for some people. Also it was causing a
+CRAN check error. I have changed some tests, examples and vignettes to use
+`RSpectra` explicitly, and to only test `irlba` code-paths where necessary. See
+<https://github.com/jlmelville/uwot/issues/115> and links therein for more
+details.
+
+# uwot 0.2.1
+
+## New features:
+
+* The [HNSW](https://github.com/nmslib/hnswlib) approximate nearest neighbor
+search algorithm is now supported via the
+[RcppHNSW](https://cran.r-project.org/package=RcppHNSW) package. Set
+`nn_method = "hnsw"` to use it. The behavior of the method can be controlled by
+the new `nn_args` parameter, a list which may contain `M`, `ef_construction`
+and `ef`. See the hnswlib library's 
+[ALGO_PARAMS documentation](https://github.com/nmslib/hnswlib/blob/master/ALGO_PARAMS.md)
+for details on these parameters. Although typically faster than Annoy (for a
+given accuracy), be aware that the only supported `metric` values are
+`"euclidean"`, `"cosine"` and `"correlation"`. Finally, RcppHNSW is only a
+suggested package, not a requirement, so you need to install it yourself (e.g.
+via `install.packages("RcppHNSW")`). Also see the
+[article on HNSW in uwot](https://jlmelville.github.io/uwot/articles/hnsw-umap.html)
+in the documentation.
+* The nearest neighbor descent approximate nearest neighbor search algorithm is
+now supported via the
+[rnndescent](https://cran.r-project.org/package=rnndescent) package. Set
+`nn_method = "nndescent"` to use it. The behavior of the method can be
+controlled by the new `nn_args` parameter. There are many supported metrics and
+possible parameters that can be set in `nn_args`, so please see the 
+[article on nearest neighbor descent in uwot](https://jlmelville.github.io/uwot/articles/rnndescent-umap.html)
+in the documentation, and also the rnndescent package's
+[documentation](https://jlmelville.github.io/rnndescent/index.html) for details.
+`rnndescent` is only a suggested package, not a requirement, so you need to 
+install it yourself (e.g. via `install.packages("rnndescent")`).
+* New function: `umap2`, which acts like `umap` but with modified defaults,
+reflecting my experience with UMAP and correcting some small mistakes. See the
+[umap2 article](https://jlmelville.github.io/uwot/articles/umap2.html) for more
+details.
+
+## Bug fixes and minor improvements
+
+* `init_sdev = "range"` caused an error with a user-supplied `init` matrix.
+* Transforming new data with the `correlation` metric was actually using the
+`cosine` metric if you saved and reloaded the model. Thank you 
+[Holly Hall](https://github.com/mdrnao) for the report and helpful detective
+work (<https://github.com/jlmelville/uwot/issues/117>).
+* `umap_transform` could fail if the new data to be transformed had the 
+`scaled:center` and `scaled:scale` attributes set (e.g. from applying the
+`scale` function).
+* If you asked `umap_transform` to return the fuzzy graph (
+`ret_extra = c("fgraph")`), it was transposed when `batch = TRUE, n_epochs = 0`.
+Thank you [PedroMilanezAlmeida](https://github.com/PedroMilanezAlmeida) for 
+reporting (<https://github.com/jlmelville/uwot/issues/118>).
+* Setting `n_sgd_threads = "auto"` with `umap_transform` caused a crash.
+* A warning was being emitted due to not being specific enough about what `dist`
+class was meant that may have been particularly affecting Seurat users. Thank 
+you [AndiMunteanu](https://github.com/AndiMunteanu) for reporting (and
+suggesting a solution) (<https://github.com/jlmelville/uwot/issues/121>).
+
+# uwot 0.1.16
+
+## Bug fixes and minor improvements
+
+* A small change to a header file was required to fully support the next version
+of [RcppAnnoy](https://cran.r-project.org/package=RcppAnnoy). Thank
+you [Dirk Eddelbuettel](https://github.com/eddelbuettel) for the PR
+(<https://github.com/jlmelville/uwot/issues/112>).
+
+# uwot 0.1.15
 
 ## New features:
 
@@ -23,6 +178,14 @@ coordinates. Supported values are `"fgraph"`, `"nn"`, `"sigma"` and `"localr"`.
 Based on a request by user 
 [PedroMilanezAlmeida](https://github.com/PedroMilanezAlmeida) 
 (<https://github.com/jlmelville/uwot/issues/104>).
+* New parameter from `umap`, `tumap` and `umap_transform`: `seed`. This will do
+the equivalent of calling `set.seed` internally, and hence will help with 
+reproducibility. The chosen seed is exported if `ret_model = TRUE` and 
+`umap_transform` will use that seed if present, so you only need to specify
+it in `umap_transform` if you want to change the seed. The default behavior 
+remains to not modify the random number state. Based on a request by
+[SuhasSrinivasan](https://github.com/SuhasSrinivasan)
+(<https://github.com/jlmelville/uwot/issues/110>).
 
 ## Bug fixes and minor improvements
 
@@ -66,6 +229,18 @@ components, a spectral initialization would attempt to merge multiple
 sub-graphs. Not true: actually, spectral initialization is abandoned in favor
 of PCA. The documentation has been updated to reflect the true state of affairs.
 No idea what I was thinking of there.
+* `load_model` and `save_model` didn't work on Windows 7 due to how the version
+of `tar` there handles drive letters. Thank you
+[mytarmail](https://github.com/mytarmail) for the report 
+(<https://github.com/jlmelville/uwot/issues/109>).
+* Warn if the initial coordinates have a very large scale (a standard deviation 
+> 10.0), because this can lead to small gradients and poor optimization. Thank
+you [SuhasSrinivasan](https://github.com/SuhasSrinivasan) for the report
+(<https://github.com/jlmelville/uwot/issues/110>).
+* A change to accommodate a forthcoming version of 
+[RcppAnnoy](https://cran.r-project.org/package=RcppAnnoy). Thank
+you [Dirk Eddelbuettel](https://github.com/eddelbuettel) for the PR
+(<https://github.com/jlmelville/uwot/issues/111>).
 
 # uwot 0.1.14
 
@@ -109,7 +284,7 @@ coordinates. This is an approximation to the
 `dens_weight` will use a larger range of output densities to reflect the input
 data. If the data is too spread out, reduce the value of `dens_weight`. For
 more information see the 
-[documentation at the uwot repo](https://jlmelville.github.io/uwot/leopold.html).
+[documentation at the uwot repo](https://jlmelville.github.io/uwot/articles/leopold.html).
 * New parameter: `binary_edge_weights`. If set to `TRUE`, instead of smoothed
 knn distances, non-zero edge weights all have a value of 1. This is how
 [PaCMAP](https://www.jmlr.org/papers/v22/20-1061.html) works and there is
@@ -196,7 +371,7 @@ updated as quickly and hence gradients are staler for longer), so it is highly
 recommended to set `n_epochs = 500` or higher. Thank you to 
 [Aaron Lun](https://github.com/LTLA) who not only came up with a way to
 implement this feature, but also wrote an entire 
-[C++ implementation of UMAP](https://github.com/LTLA/umappp) which does it 
+[C++ implementation of UMAP](https://github.com/libscran/umappp) which does it 
 (<https://github.com/jlmelville/uwot/issues/83>).
 * New parameter: `opt_args`. The default optimization method when `batch = TRUE`
 is [Adam](https://arxiv.org/abs/1412.6980). You can control its parameters by
@@ -207,7 +382,7 @@ gradient descent method like that used when `batch = FALSE`.
 * New parameter: `epoch_callback`. You may now pass a function which will be
 invoked at the end of each epoch. Mainly useful for producing an image of the
 state of the embedding at different points during the optimization. This is
-another feature taken from [umappp](https://github.com/LTLA/umappp).
+another feature taken from [umappp](https://github.com/libscran/umappp).
 * New parameter: `pca_method`, used when the `pca` parameter is supplied to
 reduce the initial dimensionality of the data. This controls which method is
 used to carry out the PCA and can be set to one of:

@@ -7,9 +7,13 @@
 ^docs$
 ^img$
 ^\.travis\.yml$
-^appveyor\.yml$
 ^codecov\.yml$
 ^.*\/*DONTCHECKMEIN.*$
 ^\.github$
+^\.clang-format$
 ^revdep$
 ^CRAN-SUBMISSION$
+^_pkgdown\.yml$
+^pkgdown$
+^vignettes/articles$
+^pkgdown$

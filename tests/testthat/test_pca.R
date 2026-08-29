@@ -13,10 +13,10 @@ test_that("PCA initialization", {
   expect_equal(abs(iris10prcomp$x[, 1:2]), abs(iris10_irlba_scores),
     check.attributes = FALSE
   )
-  
+
   suppressWarnings(iris10_svdr_scores <- irlba_svdr_scores(iris10, ncol = 2))
   expect_equal(abs(iris10prcomp$x[, 1:2]), abs(iris10_svdr_scores),
-               check.attributes = FALSE
+    check.attributes = FALSE
   )
 })
 
@@ -55,4 +55,13 @@ test_that("PCA returns model data", {
     abs(iris10_irlba_scores$center),
     check.attributes = FALSE
   )
+})
+
+test_that("logical pca ok", {
+  set.seed(1337)
+  random_logical <- matrix(rnorm(1000), nrow = 100) > 0.5
+  random_int <- random_logical * 1
+
+  expect_equal(abs(irlba_scores(random_logical, ncol = 2)),
+               abs(irlba_scores(random_int, ncol = 2)))
 })

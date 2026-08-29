@@ -1,78 +1,69 @@
-## New minor release
+## CRAN-requested update
 
-This is a new minor release to support a change in a reverse dependency which
-has been asked to resubmit their package. To explain the situation: version
-0.1.12 of uwot failed a reverse dependency check because of a broken vignette in
-the bbknnR package. This was due to that package using a non-exported function
-from this package, the internal structure of which changed when 0.1.12 was
-created. I reversed that change as part of a successful re-submission creating
-CRAN version 0.1.13.
-
-This newest submission (0.1.14) exports a public function which bbknnR can use
-in place of the non-exported function. I am aware of the policy of not
-submitting new versions of packages to CRAN with such frequency. I apologize for
-doing so, but request it be allowed to help the bbknnR package come back into
-compliance with CRAN policies without undue delay.
+This release fixes issues reported for uwot 0.2.4 in the CRAN checks and the
+additional Clang 23 checks.
 
 ## Test environments
 
-* mac OS X Big Sur (on github actions), R 4.2.1
-* Fedora Linux, R-devel, clang, gfortran (on R-hub)
-* Ubuntu Linux 20.04.1 LTS, R-release, GCC (on R-hub)
-* Debian Linux, R-devel, GCC ASAN/UBSAN (on R-hub)
-* ubuntu 22.04 R 4.2.1 (with valgrind)
-* ubuntu 20.04 (on github actions) R 4.1.3, R 4.2.1, devel
-* Windows Server 2022, R-devel, 64 bit (on R-hub)
-* win-builder R devel
-* local Windows 11 build, R 4.2.1
-* Windows Server 2012 (on appveyor) R 4.2.1
-* Windows Server 2022 (on github actions) R 4.1.3, 4.2.1
+* local Ubuntu 26.04 LTS, R 4.5.2, GCC 15.2.0
+* local Ubuntu 26.04 LTS, R 4.5.2, Clang 21.1.8 with libstdc++ and libc++
+* Ubuntu 24.04 (on GitHub Actions), R 4.5.3, R 4.6.1, and R-devel
+  (4.7.0), GCC 13.3.0
+* local Windows 11 build, R 4.6.1
+* Windows Server 2025 with Visual Studio 2026 (on GitHub Actions), R 4.5.3
+  and R 4.6.1
+* Windows Server 2022 (on Win-Builder), R-devel (2026-08-27 r90452), GCC 14.3.0
+* local macOS Tahoe R 4.6.1
+* macOS Tahoe 26, arm64 (on GitHub Actions), R 4.6.1, Apple Clang 21.0.0
+* Ubuntu 22.04 (on R-hub), R-devel 4.7.0, Clang 15.0.7
+* Ubuntu 22.04 (on R-hub), R-devel 4.7.0, Clang 22.1.8 with libc++,
+  ASAN and UBSAN
+* Fedora 42 (on R-hub), R-devel 4.7.0, GCC 15.2.1, ASAN and Valgrind
+* Fedora 44 (on R-hub), R-devel 4.7.0, GCC 16.2.1
+* Ubuntu 24.04 (on R-hub), R 4.6.1, GCC 13.3.0, LTO
 
 ## R CMD check results
 
-There are no WARNINGs or ERRORs.
+0 errors | 0 warnings | 0 notes
 
-There were two NOTEs:
+## CRAN checks
 
-N  checking installed package size ...
-     installed size is 17.4Mb
-     sub-directories of 1Mb or more:
-       libs  16.9Mb
+The CRAN checks for uwot 0.2.4 report one NOTE on the five r-devel flavors:
 
-This is due to the underlying C++ implementation using templates.
+```
+Version: 0.2.4
+Check: R code for possible problems
+Result: NOTE
+  Found calls to structure() using deprecated special names:
+    uwot/tests/testthat/test_output.R (.Dim: 1)
+  '.Dim' should be changed to 'dim'.
+```
 
-The second NOTE:
+Flavors: r-devel-linux-x86_64-debian-clang,
+r-devel-linux-x86_64-debian-gcc, r-devel-linux-x86_64-fedora-clang,
+r-devel-linux-x86_64-fedora-gcc, r-devel-windows-x86_64.
 
-* checking CRAN incoming feasibility ... [21s] NOTE
-Maintainer: 'James Melville <jlmelville@gmail.com>'
+The test fixture now uses `dim` rather than `.Dim`.
 
-Days since last update: 5
+The additional R-devel check on Fedora 44 with Clang 23.1.0 and libc++ reports
+an installation ERROR:
 
-As mentioned above, this release is to provide a public function for the CRAN
-package bbknnR to use, to replace its use of a non-exported internal function
-from this package. Once this package is on CRAN, the bbknnR maintainer will be
-able to submit a new version of their package and be back to following CRAN
-policies. I regret causing extra work for the CRAN team but I think it's better
-to give the bbknnR maintainer the opportunity to fix their package as soon as
-possible. Uwe Ligges is aware of the issue with bbknnR and has asked the bbknnR
-maintainers to resubmit their package, so I hope that this pattern of swift
-resubmissions will be forgiven on this occasion.
+```
+Version: 0.2.4
+Check: whether package can be installed
+Result: ERROR
+  ../inst/include/uwot/update.h:210:10: error: no member named 'fill' in namespace 'std'
+  ../inst/include/RcppPerpendicular.h:97:52: error: no member named 'ref' in namespace 'std'
+```
 
-* There was a message about possibly mis-spelled words in DESCRIPTION:
-  
-  McInnes (7:42)
-  Rcpp (11:73)
-  UMAP (2:59)
-  al (7:53, 10:38)
-  et (7:50, 10:35)
-  uwot (12:57)
-     
-These are spelled correctly.
+The installed C++ headers now directly include `<algorithm>` and `<functional>`,
+which declare `std::fill` and `std::ref`, respectively. This avoids relying on
+transitive libc++ includes removed in LLVM 23.
 
-## Downstream dependencies
+## revdepcheck results
 
-We checked 54 reverse dependencies (28 from CRAN + 26 from Bioconductor), 
-comparing R CMD check results across CRAN and dev versions of this package.
+We checked 98 reverse dependencies (58 from CRAN + 40 from Bioconductor),
+comparing R CMD check results across CRAN and development versions of uwot.
 
- * We saw 0 new problems
- * We failed to check 0 packages
+* We saw 0 new problems.
+* We failed to check 0 packages.

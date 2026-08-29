@@ -27,16 +27,13 @@
 #ifndef UWOT_GRADIENT_H
 #define UWOT_GRADIENT_H
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
+#include <utility>
 #include <vector>
 
 namespace uwot {
-
-inline auto clamp(float v, float lo, float hi) -> float {
-  float t = v < lo ? lo : v;
-  return t > hi ? hi : t;
-}
 
 // return the squared euclidean distance between two points x[px] and y[py]
 // also store the displacement between x[px] and y[py] in diffxy
@@ -44,8 +41,8 @@ inline auto clamp(float v, float lo, float hi) -> float {
 // rather than recalculating it in the gradient step
 inline auto d2diff(const std::vector<float> &x, std::size_t px,
                    const std::vector<float> &y, std::size_t py,
-                   std::size_t ndim, float dist_eps, std::vector<float> &diffxy)
-    -> float {
+                   std::size_t ndim, float dist_eps,
+                   std::vector<float> &diffxy) -> float {
   float d2 = 0.0;
   for (std::size_t d = 0; d < ndim; d++) {
     float diff = x[px + d] - y[py + d];
@@ -59,8 +56,9 @@ inline auto d2diff(const std::vector<float> &x, std::size_t px,
 // which for Euclidean distance in the output is invariably grad_coeff * (X - Y)
 // Different methods clamp the magnitude of the gradient to different values
 template <typename Gradient>
-auto grad_d(const Gradient &gradient, const std::vector<float> &disp,
-            std::size_t d, float grad_coeff) -> float {
+[[nodiscard]] auto grad_d(const Gradient &gradient,
+                          const std::vector<float> &disp, std::size_t d,
+                          float grad_coeff) -> float {
   return gradient.clamp_grad(grad_coeff * disp[d]);
 }
 
@@ -88,7 +86,7 @@ auto grad_rep(const Gradient &gradient,
 
 // https://martin.ankerl.com/2012/01/25/optimized-approximative-pow-in-c-and-cpp/
 // an approximation to pow
-inline auto fastPrecisePow(float a, float b) -> float {
+[[nodiscard]] inline auto fastPrecisePow(float a, float b) -> float {
   // calculate approximation with fraction of the exponent
   int e = static_cast<int>(b);
   union {
@@ -129,7 +127,7 @@ public:
     return gamma_b_2 / ((0.001 + d2) * (a * powfun(d2, b) + 1.0));
   }
   auto clamp_grad(float grad_d) const -> float {
-    return clamp(grad_d, clamp_lo, clamp_hi);
+    return std::clamp(grad_d, clamp_lo, clamp_hi);
   }
   static const constexpr float clamp_hi = 4.0;
   static const constexpr float clamp_lo = -4.0;
@@ -150,32 +148,34 @@ using apumap_gradient = base_umap_gradient<fastPrecisePow>;
 // distribution as used in t-SNE. This massively simplifies the gradient,
 // removing the pow calls, resulting in a noticeable speed increase (50% with
 // MNIST), although the resulting embedding has a larger spread than the
-// default. Also gamma is absent from this, because I believe it to be
-// un-necessary in the UMAP cost function.
+// default.
 class tumap_gradient {
 public:
-  tumap_gradient() = default;
+  tumap_gradient(float gamma) : gamma_2(gamma * 2.0){};
   auto grad_attr(float d2, std::size_t, std::size_t) const -> float {
     return -2.0 / (d2 + 1.0);
   }
   auto grad_rep(float d2, std::size_t, std::size_t) const -> float {
-    return 2.0 / ((0.001 + d2) * (d2 + 1.0));
+    return gamma_2 / ((0.001 + d2) * (d2 + 1.0));
   }
   auto clamp_grad(float grad_d) const -> float {
-    return clamp(grad_d, clamp_lo, clamp_hi);
+    return std::clamp(grad_d, clamp_lo, clamp_hi);
   }
   static const constexpr float clamp_hi = 4.0;
   static const constexpr float clamp_lo = -4.0;
+
+private:
+  float gamma_2;
 };
 
 // UMAP where a varies for each observation
 class umapai_gradient {
 public:
-  umapai_gradient(const std::vector<float> &ai, float b, std::size_t ndim)
-      : ai(ai), b(b), ndim(ndim), b_m2(-2.0 * b), b_2(2.0 * b) {}
+  umapai_gradient(std::vector<float> ai, float b, std::size_t ndim)
+      : ai(std::move(ai)), b(b), ndim(ndim), b_m2(-2.0 * b), b_2(2.0 * b) {}
 
   auto clamp_grad(float grad_d) const -> float {
-    return clamp(grad_d, clamp_lo, clamp_hi);
+    return std::clamp(grad_d, clamp_lo, clamp_hi);
   }
   static const constexpr float clamp_hi = 4.0;
   static const constexpr float clamp_lo = -4.0;
@@ -200,12 +200,13 @@ private:
 
 class umapai2_gradient {
 public:
-  umapai2_gradient(const std::vector<float> &ai, const std::vector<float> &aj,
+  umapai2_gradient(std::vector<float> ai, std::vector<float> aj,
                    float b, std::size_t ndim)
-      : ai(ai), aj(aj), b(b), ndim(ndim), b_m2(-2.0 * b), b_2(2.0 * b) {}
+      : ai(std::move(ai)), aj(std::move(aj)), b(b), ndim(ndim),
+        b_m2(-2.0 * b), b_2(2.0 * b) {}
 
   auto clamp_grad(float grad_d) const -> float {
-    return clamp(grad_d, clamp_lo, clamp_hi);
+    return std::clamp(grad_d, clamp_lo, clamp_hi);
   }
   static const constexpr float clamp_hi = 4.0;
   static const constexpr float clamp_lo = -4.0;
@@ -239,7 +240,7 @@ public:
     return gamma_2 / ((0.1 + d2) * (d2 + 1.0));
   }
   auto clamp_grad(float grad_d) const -> float {
-    return clamp(grad_d, clamp_lo, clamp_hi);
+    return std::clamp(grad_d, clamp_lo, clamp_hi);
   }
   static const constexpr float clamp_hi = 5.0;
   static const constexpr float clamp_lo = -5.0;
@@ -248,24 +249,6 @@ private:
   float gamma_2;
 };
 
-class pacmap_gradient {
-public:
-  float a;
-  float b;
-  float ab2m;
-  float b1;
-
-  // near: a 1-3, b = 10; mid: a = 3-1000, b = 10,000
-  pacmap_gradient(float a, float b)
-      : a(1.0), b(10.0), ab2m(-2.0 * a * b), b1(b + 1.0) {}
-  auto grad_attr(float d2, std::size_t, std::size_t) const -> float {
-    return ab2m / ((b1 + d2) * (b1 + d2));
-  }
-  auto grad_rep(float d2, std::size_t, std::size_t) const -> float {
-    return 2.0 / ((2.0 + d2) * (2.0 + d2));
-  }
-  inline auto clamp_grad(float grad_d) const -> float { return grad_d; }
-};
 } // namespace uwot
 
 #endif // UWOT_GRADIENT_H

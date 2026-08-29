@@ -19,8 +19,7 @@
 laplacian_eigenmap <- function(A, ndim = 2, verbose = FALSE, force_irlba = FALSE) {
   if (rspectra_is_installed() && !force_irlba) {
     coords <- rspectra_laplacian_eigenmap(A, ndim, verbose = verbose)
-  }
-  else {
+  } else {
     coords <- irlba_laplacian_eigenmap(A, ndim, verbose = verbose)
   }
   coords
@@ -38,7 +37,17 @@ rspectra_laplacian_eigenmap <- function(A, ndim = 2, verbose = FALSE) {
   # and because A is symmetric, they're equivalent
   M <- A / colSums(A)
   res <- rspectra_eigs_asym(M, ndim)
-  if (is.null(res) || ncol(res$vectors) < ndim) {
+  if (is.null(res) ||
+    !is.list(res) ||
+    !"vectors" %in% names(res) ||
+    is.null(res$vectors) ||
+    tryCatch(
+      is.na(ncol(res$vectors)),
+      error = function(e) {
+        TRUE
+      }
+    ) ||
+    ncol(res$vectors) < ndim) {
     message(
       "Laplacian Eigenmap failed to converge, ",
       "using random initialization instead"
@@ -90,29 +99,28 @@ form_normalized_laplacian <- function(A) {
 # this matrix (hence can be used with truncated SVD), and the eigenvalues
 # are all positive, so we don't lose sign and hence correct eigenvector ordering
 # when using the singular values (lambda = 2 - d)
+# effectively we form 2I - Lsym = D^-1/2 W D^-1/2 + I
 form_modified_laplacian <- function(A, ret_d = FALSE) {
   Dsq <- sqrt(Matrix::colSums(A))
   L <- Matrix::t(A / Dsq) / Dsq
   Matrix::diag(L) <- 1 + Matrix::diag(L)
   if (ret_d) {
     list(L = L, Disqrt = 1 / Dsq)
-  }
-  else {
+  } else {
     L
   }
 }
 
 # Return the ndim eigenvectors associated with the ndim largest eigenvalues
-sort_eigenvectors <- function(eig_res, ndim) {
-  vec_indices <- rev(order(eig_res$values, decreasing = TRUE)[1:ndim])
+sort_eigenvectors <- function(eig_res, ndim, decreasing = TRUE) {
+  vec_indices <- rev(order(eig_res$values, decreasing = decreasing)[1:ndim])
   as.matrix(Re(eig_res$vectors[, vec_indices]))
 }
 
 normalized_laplacian_init <- function(A, ndim = 2, verbose = FALSE, force_irlba = FALSE) {
   if (rspectra_is_installed() && !force_irlba) {
     coords <- rspectra_normalized_laplacian_init(A, ndim, verbose = verbose)
-  }
-  else {
+  } else {
     coords <- irlba_normalized_laplacian_init(A, ndim, verbose = verbose)
   }
   coords
@@ -128,7 +136,17 @@ rspectra_normalized_laplacian_init <- function(A, ndim = 2, verbose = FALSE) {
   L <- form_normalized_laplacian(A)
   res <- rspectra_eigs_sym(L, ndim, verbose = verbose)
 
-  if (is.null(res) || ncol(res$vectors) < ndim) {
+  if (is.null(res) ||
+      !is.list(res) ||
+      !"vectors" %in% names(res) ||
+      is.null(res$vectors) ||
+      tryCatch(
+        is.na(ncol(res$vectors)),
+        error = function(e) {
+          TRUE
+        }
+      ) ||
+      ncol(res$vectors) < ndim) {
     message(
       "Spectral initialization failed to converge, ",
       "using random initialization instead"
@@ -137,6 +155,53 @@ rspectra_normalized_laplacian_init <- function(A, ndim = 2, verbose = FALSE) {
     return(rand_init(n, ndim))
   }
   sort_eigenvectors(res, ndim)
+}
+
+# maybe this should become an option one day
+# reminder to me for the next time I experiment: Shift-invert just doesn't work
+# in all cases: causes MNIST (k = 15) to hang forever even with a guess for
+# initvec of D^1/2, no matter which shift value (or maxitr or tol value) is
+# used. But we can form the shifted Laplacian like we do for tsvd approaches
+# and look for the LM eigenvalues (plus initialize with D^1/2 as a guess)
+# However the tolerance needs to be lower for similar quality of output
+# and most initializations are < 1 second anyway, so we don't gain much from
+# speeding them up. For slower initializations (e.g. `tomoradar`, `mammoth`)
+# there is a small speed up, but not down to a few seconds
+rspectra_normalized_laplacian_init_shift_inv <- function(A, ndim = 2, verbose = FALSE) {
+  if (nrow(A) < 3) {
+    tsmessage("Graph too small, using random initialization instead")
+    return(rand_init(nrow(A), ndim))
+  }
+  tsmessage("Initializing from normalized Laplacian")
+
+  L <- form_modified_laplacian(A)
+  initvec <- sqrt(Matrix::colSums(A))
+  res <- rspectra_eigs_shift_sym(L,
+    ndim,
+    verbose = verbose,
+    initvec = initvec,
+    tol = 1e-6
+  )
+  norm_initvec <- initvec / sqrt(sum(initvec * initvec))
+  if (is.null(res) ||
+    !is.list(res) ||
+    !"vectors" %in% names(res) ||
+    is.null(res$vectors) ||
+    tryCatch(
+      is.na(ncol(res$vectors)),
+      error = function(e) {
+        TRUE
+      }
+    ) ||
+    ncol(res$vectors) < ndim) {
+    message(
+      "Spectral initialization failed to converge, ",
+      "using random initialization instead"
+    )
+    n <- nrow(A)
+    return(rand_init(n, ndim))
+  }
+  sort_eigenvectors(res, ndim, decreasing = FALSE)
 }
 
 # Use a normalized Laplacian and use truncated SVD
@@ -161,43 +226,72 @@ irlba_tsvd_normalized_laplacian_init <- function(A, ndim = 2, verbose = FALSE) {
 }
 
 irlba_spectral_tsvd <- function(L, n, iters = 1000) {
-  suppressWarnings(res <- irlba::irlba(L, nv = n, nu = 0, maxit = iters))
-  list(vectors = res$v, values = 2.0 - res$d, converged = res$iter != iters)
+  irlba_args <- list(
+    A = L,
+    nv = n,
+    nu = 0,
+    maxit = iters
+  )
+  suppressWarnings(res <- tryCatch(
+    do.call(irlba::irlba, irlba_args),
+    error = function(c) {
+      irlba_args$fastpath <- FALSE
+      do.call(irlba::irlba, irlba_args)
+    }
+  ))
+  list(
+    vectors = res$v,
+    values = 2.0 - res$d,
+    converged = res$iter != iters
+  )
 }
 
 irlba_eigs_asym <- function(L, ndim) {
-  suppressWarnings(res <- tryCatch({
-    res <- irlba::partial_eigen(
-      L,
-      n = ndim + 1,
-      symmetric = FALSE,
-      smallest = TRUE,
-      tol = 1e-3,
-      maxit = 1000,
-      verbose = TRUE
-    )
+  irlba_args <- list(
+    x = L,
+    n = ndim + 1,
+    symmetric = FALSE,
+    smallest = TRUE,
+    tol = 1e-3,
+    maxit = 1000
+  )
+  suppressWarnings(res <- tryCatch(
+    do.call(irlba::partial_eigen, irlba_args),
+    error = function(e) {
+      irlba_args$fastpath <- FALSE
+      tryCatch(
+        do.call(irlba::partial_eigen, irlba_args),
+        error = function(e) {
+          NULL
+        }
+      )
+    }
+  ))
+  if (!is.null(res)) {
     res$values <- sqrt(res$values)
-    res
-  },
-  error = function(c) {
-    NULL
-  }))
+  }
   res
 }
 
 irlba_eigs_sym <- function(L, ndim, smallest = TRUE) {
+  irlba_args <- list(
+    x = L,
+    n = ndim + 1,
+    symmetric = TRUE,
+    smallest = smallest,
+    tol = 1e-3,
+    maxit = 1000
+  )
   suppressWarnings(res <- tryCatch(
-    res <- irlba::partial_eigen(
-      L,
-      n = ndim + 1,
-      symmetric = TRUE,
-      smallest = smallest,
-      tol = 1e-3,
-      maxit = 1000,
-      verbose = FALSE
-    ),
-    error = function(c) {
-      NULL
+    do.call(irlba::partial_eigen, irlba_args),
+    error = function(e) {
+      irlba_args$fastpath <- FALSE
+      tryCatch(
+        do.call(irlba::partial_eigen, irlba_args),
+        error = function(e) {
+          NULL
+        }
+      )
     }
   ))
   res
@@ -216,9 +310,17 @@ irlba_normalized_laplacian_init <- function(A, ndim = 2, verbose = FALSE) {
   # Laplacian and look for largest eigenvalues
   L <- form_modified_laplacian(A)
   res <- irlba_eigs_sym(L, ndim, smallest = FALSE)
-  # shift back the eigenvalues
-  res$values <- 2.0 - res$values
-  if (is.null(res) || ncol(res$vectors) < ndim) {
+  if (is.null(res) ||
+    !is.list(res) ||
+    !"vectors" %in% names(res) ||
+    is.null(res$vectors) ||
+    tryCatch(
+      is.na(ncol(res$vectors)),
+      error = function(e) {
+        TRUE
+      }
+    ) ||
+    ncol(res$vectors) < ndim) {
     message(
       "Spectral initialization failed to converge, ",
       "using random initialization instead"
@@ -226,6 +328,8 @@ irlba_normalized_laplacian_init <- function(A, ndim = 2, verbose = FALSE) {
     n <- nrow(A)
     return(rand_init(n, ndim))
   }
+  # shift back the eigenvalues
+  res$values <- 2.0 - res$values
   sort_eigenvectors(res, ndim)
 }
 
@@ -240,8 +344,7 @@ spectral_init <- function(A, ndim = 2, verbose = FALSE, force_irlba = FALSE) {
   if (rspectra_is_installed() && !force_irlba) {
     tsmessage("Initializing from normalized Laplacian + noise (using RSpectra)")
     coords <- rspectra_normalized_laplacian_init(A, ndim, verbose = FALSE)
-  }
-  else {
+  } else {
     tsmessage("Initializing from normalized Laplacian + noise (using irlba)")
     coords <- irlba_tsvd_normalized_laplacian_init(A, ndim, verbose = FALSE)
   }
@@ -262,7 +365,7 @@ irlba_spectral_init <- function(A, ndim = 2, verbose = FALSE) {
 # Scales coords so that the largest absolute coordinate is 10.0 then jitters by
 # adding gaussian noise with mean 0 and standard deviation sd
 scale_and_jitter <- function(coords, max_coord = 10.0, sd = 0.0001) {
-   expansion <- 10.0 / max(abs(coords))
+  expansion <- 10.0 / max(abs(coords))
   (coords * expansion) + matrix(stats::rnorm(n = prod(dim(coords)), sd = sd),
     ncol = ncol(coords)
   )
@@ -292,6 +395,12 @@ rand_init_lv <- function(n, ndim, verbose = FALSE) {
 # distances lead to small gradients, and hence small updates, so should be
 # avoided.
 scale_coords <- function(X, sdev = 1e-4, verbose = FALSE) {
+  if (is.character(sdev) && sdev == "range") {
+    # #99: range scale coordinates like python UMAP does
+    tsmessage("Range-scaling initial input columns to 0-10")
+    return(apply(X, 2, range_scale, max = 10.0))
+  }
+
   if (is.null(sdev)) {
     return(X)
   }
@@ -305,12 +414,12 @@ scale_coords <- function(X, sdev = 1e-4, verbose = FALSE) {
 # Returns the score matrix unless ret_extra is TRUE, in which case a list
 # is returned also containing the eigenvalues
 pca_init <- function(X, ndim = min(dim(X)), center = TRUE, ret_extra = FALSE,
-                       pca_method = "auto", verbose = FALSE) {
-  if (methods::is(X, "dist")) {
+                     pca_method = "auto", verbose = FALSE) {
+  if (inherits(X, "dist")) {
     res_mds <- stats::cmdscale(X, x.ret = TRUE, eig = TRUE, k = ndim)
-
     if (ret_extra || verbose) {
       lambda <- res_mds$eig
+      lambda[lambda < 0] <- 0
       varex <- sum(lambda[1:ndim]) / sum(lambda)
       tsmessage(
         "PCA (using classical MDS): ", ndim, " components explained ",
@@ -399,9 +508,13 @@ svd_scores <- function(X, ncol = min(dim(X)), center = TRUE, ret_extra = FALSE,
 
 # Get PCA scores via irlba
 irlba_scores <- function(X, ncol, center = TRUE, ret_extra = FALSE, verbose = FALSE) {
+  if (is.logical(X)) {
+    tsmessage("Converting logical input to numeric for PCA initialization")
+    # convert logical matrix to numeric
+    X <- X * 1
+  }
   res <- irlba::prcomp_irlba(X,
-    n = ncol, retx = TRUE, center = center,
-    scale = FALSE
+    n = ncol, retx = TRUE, center = center, scale. = FALSE
   )
   report_varex(res, verbose)
   if (ret_extra) {

@@ -24,12 +24,14 @@ similarity_graph(
   pca_center = TRUE,
   ret_extra = c(),
   n_threads = NULL,
+  n_build_threads = NULL,
   grain_size = 1,
   kernel = "gauss",
   tmpdir = tempdir(),
   verbose = getOption("verbose", TRUE),
   pca_method = NULL,
-  binary_edge_weights = FALSE
+  binary_edge_weights = FALSE,
+  nn_args = list()
 )
 }
 \arguments{
@@ -53,8 +55,8 @@ result in more global views of the manifold, while smaller values result in
 more local data being preserved. In general values should be in the range
 \code{2} to \code{100}.}
 
-\item{metric}{Type of distance metric to use to find nearest neighbors. One
-  of:
+\item{metric}{Type of distance metric to use to find nearest neighbors. For
+ \code{nn_method = "annoy"} this can be one of:
 \itemize{
   \item \code{"euclidean"} (the default)
   \item \code{"cosine"}
@@ -63,8 +65,36 @@ more local data being preserved. In general values should be in the range
   \item \code{"correlation"} (a distance based on the Pearson correlation)
   \item \code{"categorical"} (see below)
 }
-Only applies if \code{nn_method = "annoy"} (for \code{nn_method = "fnn"}, the
-distance metric is always "euclidean").
+For \code{nn_method = "hnsw"} this can be one of:
+\itemize{
+  \item \code{"euclidean"}
+  \item \code{"cosine"}
+  \item \code{"correlation"}
+}
+If \href{https://cran.r-project.org/package=rnndescent}{rnndescent} is
+installed and \code{nn_method = "nndescent"} is specified then many more
+metrics are avaiable, including:
+\itemize{
+\item \code{"braycurtis"}
+\item \code{"canberra"}
+\item \code{"chebyshev"}
+\item \code{"dice"}
+\item \code{"hamming"}
+\item \code{"hellinger"}
+\item \code{"jaccard"}
+\item \code{"jensenshannon"}
+\item \code{"kulsinski"}
+\item \code{"rogerstanimoto"}
+\item \code{"russellrao"}
+\item \code{"sokalmichener"}
+\item \code{"sokalsneath"}
+\item \code{"spearmanr"}
+\item \code{"symmetrickl"}
+\item \code{"tsss"}
+\item \code{"yule"}
+}
+For more details see the package documentation of \code{rnndescent}.
+For \code{nn_method = "fnn"}, the distance metric is always "euclidean".
 
 If \code{X} is a data frame or matrix, then multiple metrics can be
 specified, by passing a list to this argument, where the name of each item in
@@ -126,18 +156,35 @@ dimension of the manifold. Ignored if \code{method = "largevis"}.}
     \href{https://cran.r-project.org/package=FNN}{FNN} package.
   \item \code{"annoy"} Use approximate nearest neighbors via the
     \href{https://cran.r-project.org/package=RcppAnnoy}{RcppAnnoy} package.
+  \item \code{"hnsw"} Use approximate nearest neighbors with the
+    Hierarchical Navigable Small World (HNSW) method (Malkov and Yashunin,
+    2018) via the
+    \href{https://cran.r-project.org/package=RcppHNSW}{RcppHNSW} package.
+    \code{RcppHNSW} is not a dependency of this package: this option is
+    only available if you have installed \code{RcppHNSW} yourself. Also,
+    HNSW only supports the following arguments for \code{metric} and
+    \code{target_metric}: \code{"euclidean"}, \code{"cosine"} and
+    \code{"correlation"}.
+  \item \code{"nndescent"} Use approximate nearest neighbors with the
+    Nearest Neighbor Descent method (Dong et al., 2011) via the
+    \href{https://cran.r-project.org/package=rnndescent}{rnndescent}
+    package. \code{rnndescent} is not a dependency of this package: this
+    option is only available if you have installed \code{rnndescent}
+    yourself.
  }
 By default, if \code{X} has less than 4,096 vertices, the exact nearest
 neighbors are found. Otherwise, approximate nearest neighbors are used.
 You may also pass pre-calculated nearest neighbor data to this argument. It
 must be one of two formats, either a list consisting of two elements:
 \itemize{
-  \item \code{"idx"}. A \code{n_vertices x n_neighbors} matrix
-  containing the integer indexes of the nearest neighbors in \code{X}. Each
-  vertex is considered to be its own nearest neighbor, i.e.
-  \code{idx[, 1] == 1:n_vertices}.
-  \item \code{"dist"}. A \code{n_vertices x n_neighbors} matrix
-  containing the distances of the nearest neighbors.
+  \item \code{"idx"} (or \code{"index"}). A \code{n_vertices x n_neighbors}
+  matrix containing the integer indexes of the nearest neighbors in
+  \code{X}.
+  \emph{Each vertex is considered to be its own nearest neighbor, i.e.
+  \code{idx[, 1] == 1:n_vertices}}.
+  \item \code{"dist"} (or \code{"distance"}). A
+  \code{n_vertices x n_neighbors} matrix containing the distances of the
+  nearest neighbors.
 }
 or a sparse distance matrix of type \code{dgCMatrix}, with dimensions
 \code{n_vertices x n_vertices}. Distances should be arranged by column,
@@ -252,9 +299,15 @@ any combination of the following strings:
 
 \item{n_threads}{Number of threads to use. Default is half the number of
 concurrent threads supported by the system. For nearest neighbor search,
-only applies if \code{nn_method = "annoy"}. If \code{n_threads > 1}, then
-the Annoy index will be temporarily written to disk in the location
-determined by \code{\link[base]{tempfile}}.}
+this controls the search phase. For \code{nn_method = "annoy"}, if
+\code{n_threads > 1}, then the Annoy index will be temporarily written to
+disk in the location determined by \code{\link[base]{tempfile}}.}
+
+\item{n_build_threads}{Number of threads to use when building nearest
+neighbor indexes. Default is \code{NULL}, which uses \code{n_threads}. To
+improve determinism, use \code{n_build_threads = 1}. Only
+applies for \code{nn_method = "hnsw"} or \code{nn_method = "nndescent"}.
+The Annoy-based index always use a single thread.}
 
 \item{grain_size}{The minimum amount of work to do on each thread. If this
 value is set high enough, then less than \code{n_threads} will be used for
@@ -304,6 +357,73 @@ the \code{pca} parameter is specified. Allowed values are:
 
 \item{binary_edge_weights}{If \code{TRUE} then edge weights of the returned
 graph are binary (0/1) rather than reflecting the degree of similarity.}
+
+\item{nn_args}{A list containing additional arguments to pass to the nearest
+neighbor method. For \code{nn_method = "annoy"}, you can specify
+\code{"n_trees"} and \code{"search_k"}, and these will override the
+\code{n_trees} and \code{search_k} parameters.
+For \code{nn_method = "hnsw"}, you may specify the following arguments:
+\itemize{
+\item \code{M} The maximum number of neighbors to keep for each vertex.
+Reasonable values are \code{2} to \code{100}. Higher values give better
+recall at the cost of more memory. Default value is \code{16}.
+\item \code{ef_construction} A positive integer specifying the size of
+the dynamic list used during index construction. A higher value will
+provide better results at the cost of a longer time to build the index.
+Default is \code{200}.
+\item \code{ef} A positive integer specifying the size of the dynamic
+list used during search. This cannot be smaller than \code{n_neighbors}
+and cannot be higher than the number of items in the index. Default is
+\code{10}.
+}
+For \code{nn_method = "nndescent"}, you may specify the following
+arguments:
+\itemize{
+\item \code{n_trees} The number of trees to use in a random projection
+forest to initialize the search. A larger number will give more accurate
+results at the cost of a longer computation time. The default of
+\code{NULL} means that the number is chosen based on the number of
+observations in \code{X}.
+\item \code{max_candidates} The number of potential neighbors to explore
+per iteration. By default, this is set to \code{n_neighbors} or \code{60},
+whichever is smaller. A larger number will give more accurate results at
+the cost of a longer computation time.
+\item \code{n_iters} The number of iterations to run the search. A larger
+number will give more accurate results at the cost of a longer computation
+time. By default, this will be chosen based on the number of observations
+in \code{X}. You may also need to modify the convergence criterion
+\code{delta}.
+\item \code{delta} The minimum relative change in the neighbor graph
+allowed before early stopping. Should be a value between 0 and 1. The
+smaller the value, the smaller the amount of progress between iterations is
+allowed. Default value of \code{0.001} means that at least 0.1% of the
+neighbor graph must be updated at each iteration.
+\item \code{init} How to initialize the nearest neighbor descent. By
+default this is set to \code{"tree"} and uses a random project forest.
+If you set this to \code{"rand"}, then a random selection is used. Usually
+this is less accurate than using RP trees, but for high-dimensional cases,
+there may be little difference in the quality of the initialization and
+random initialization will be a lot faster. If you set this to
+\code{"rand"}, then the \code{n_trees} parameter is ignored.
+\item \code{pruning_degree_multiplier} The maximum number of edges per node
+to retain in the search graph, relative to \code{n_neighbors}. A larger
+value will give more accurate results at the cost of a longer computation
+time. Default is \code{1.5}. This parameter only affects neighbor search
+when transforming new data with \code{\link{umap_transform}}.
+\item \code{epsilon} Controls the degree of the back-tracking when
+traversing the search graph. Setting this to \code{0.0} will do a greedy
+search with no back-tracking. A larger value will give more accurate
+results at the cost of a longer computation time. Default is \code{0.1}.
+This parameter only affects neighbor search when transforming new data with
+\code{\link{umap_transform}}.
+\item \code{max_search_fraction} Specifies the maximum fraction of the
+search graph to traverse. By default, this is set to \code{1.0}, so the
+entire graph (i.e. all items in \code{X}) may be visited. You may want to
+set this to a smaller value if you have a very large dataset (in
+conjunction with \code{epsilon}) to avoid an inefficient exhaustive search
+of the data in \code{X}. This parameter only affects neighbor search when
+transforming new data with \code{\link{umap_transform}}.
+}}
 }
 \value{
 A sparse symmetrized matrix of the similarities between the items in
@@ -361,15 +481,31 @@ iris30_sim_graph <- similarity_graph(iris30, n_neighbors = 10)
 # to control neighborhood size. Use ret_extra = "nn" to return nearest
 # neighbor data as well as the similarity graph. Return value is a list
 # containing similarity_graph' and 'nn' items.
-iris30_lv_graph <- similarity_graph(iris30, perplexity = 10,
-                                    method = "largevis", ret_extra = "nn")
+iris30_lv_graph <- similarity_graph(iris30,
+  perplexity = 10,
+  method = "largevis", ret_extra = "nn"
+)
 # If you have the neighbor information you don't need the original data
-iris30_lv_graph_nn <- similarity_graph(nn_method = iris30_lv_graph$nn,
-                                       perplexity = 10, method = "largevis")
+iris30_lv_graph_nn <- similarity_graph(
+  nn_method = iris30_lv_graph$nn,
+  perplexity = 10, method = "largevis"
+)
 all(iris30_lv_graph_nn == iris30_lv_graph$similarity_graph)
 
 }
 \references{
+Dong, W., Moses, C., & Li, K. (2011, March).
+Efficient k-nearest neighbor graph construction for generic similarity measures.
+In \emph{Proceedings of the 20th international conference on World Wide Web}
+(pp. 577-586).
+ACM.
+\doi{10.1145/1963405.1963487}.
+
+Malkov, Y. A., & Yashunin, D. A. (2018).
+Efficient and robust approximate nearest neighbor search using hierarchical
+navigable small world graphs.
+\emph{IEEE transactions on pattern analysis and machine intelligence}, \emph{42}(4), 824-836.
+
 McInnes, L., Healy, J., & Melville, J. (2018).
 UMAP: Uniform Manifold Approximation and Projection for Dimension Reduction
 \emph{arXiv preprint} \emph{arXiv}:1802.03426.

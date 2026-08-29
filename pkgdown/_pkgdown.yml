@@ -1,0 +1,47 @@
+url: https://jlmelville.github.io/uwot/
+template:
+  bootstrap: 5
+
+articles:
+- title: What's New
+  desc: "A summary of the latest changes to `uwot`."
+  contents:
+   - articles/whatsnew
+- title: Examples
+  desc: Lots of example output of UMAP in its various modes.
+  contents:
+  - articles/umap-examples
+  - articles/pycompare
+  - articles/pacmap-comparison
+  - articles/embedding-new-data
+  - articles/metric-learning
+- title: Theory
+  desc: Exploring the theory and algorithm driving UMAP and its parameters.
+  contents:
+  - articles/umap-for-tsne
+  - articles/umap-simple
+  - articles/abparams
+- title: Nearest Neighbors Methods
+  desc: Using external nearest neighbor data with `uwot`.
+  contents:
+  - articles/nearest-neighbors-format
+  - articles/hnsw-umap
+  - articles/rnndescent-umap
+  - articles/mutual-nearest-neighbors
+  - articles/locally-scaled-neighbors
+- title: Articles
+  desc: More details on some of what `uwot` can do.
+  contents:
+  - articles/umap2
+  - articles/optional-dependencies
+  - articles/mixed-data-types
+  - articles/fast-sgd
+  - articles/init
+  - articles/mid-spectral-initialization
+  - articles/leopold
+  - articles/reproducibility
+  - articles/performance
+  - articles/lvish
+  - articles/tumap
+  - articles/sparse-data-example
+
